@@ -257,14 +257,14 @@ required_apps = ["erpnext"]
 # ignore_translatable_strings_from = []
 
 fixtures = [
-    {"doctype": "Custom Field"},
+    {"doctype": "Custom Field", "filters":{"module":["in",["Swift Fix"]]}},
     {"doctype": "Client Script"},
     {"doctype": "Server Script"},
     {"doctype": "Workflow"},
     {"doctype": "Workflow State"},
     {"doctype": "Workflow Action Master"},
     {"doctype": "Role"},
-    {"doctype": "Custom DocPerm"}
+    # {"doctype": "Custom DocPerm"}
 ]
 
 after_install = "swift_fix.setup.install.after_install"
