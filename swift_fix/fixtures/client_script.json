@@ -1,0 +1,57 @@
+[
+ {
+  "docstatus": 0,
+  "doctype": "Client Script",
+  "dt": "Location",
+  "enabled": 1,
+  "modified": "2026-04-28 23:51:14.103153",
+  "module": "Swift Fix",
+  "name": "Location Lead Validation",
+  "script": "frappe.ui.form.on('Location', {\r\n\r\n    validate(frm) {\r\n\r\n        if (frm.doc.location_type === \"Retailer\" && !frm.doc.lead) {\r\n\r\n            frappe.throw(\"Lead is mandatory when Location Type is Retailer\");\r\n\r\n        }\r\n\r\n    }\r\n\r\n});",
+  "view": "Form"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Client Script",
+  "dt": "Request for Quotation",
+  "enabled": 1,
+  "modified": "2026-04-28 23:55:05.673670",
+  "module": "Swift Fix",
+  "name": "RFQ Recce Timestamp",
+  "script": "frappe.ui.form.on('Request for Quotation', {\r\n\r\n    recce_length(frm) {\r\n\r\n        if (!frm.doc.recced_timestamp) {\r\n\r\n            frm.set_value(\r\n                \"recced_timestamp\",\r\n                frappe.datetime.now_datetime()\r\n            );\r\n\r\n        }\r\n\r\n    }\r\n\r\n});",
+  "view": "Form"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Client Script",
+  "dt": "Supplier Quotation",
+  "enabled": 1,
+  "modified": "2026-04-29 03:29:21.353445",
+  "module": "Swift Fix",
+  "name": "Supplier Quotation Recce Fetch",
+  "script": "frappe.ui.form.on('Supplier Quotation', {\r\n\r\n    request_for_quotation(frm) {\r\n\r\n        if (frm.doc.request_for_quotation) {\r\n\r\n            frappe.call({\r\n\r\n                method: \"frappe.client.get\",\r\n\r\n                args: {\r\n                    doctype: \"Request for Quotation\",\r\n                    name: frm.doc.request_for_quotation\r\n                },\r\n\r\n                callback: function(r) {\r\n\r\n                    let rfq = r.message;\r\n\r\n                    if (rfq) {\r\n\r\n                        frm.set_value(\"location\", rfq.location);\r\n                        frm.set_value(\"lead\", rfq.lead);\r\n\r\n                        let recce_html = `\r\n                        <div style=\"padding:10px\">\r\n                        <b>Recce Details</b><br><br>\r\n                        Length : ${rfq.recce_length || \"\"}<br>\r\n                        Height : ${rfq.recce_height || \"\"}<br>\r\n                        Depth : ${rfq.recce_depth || \"\"}<br>\r\n                        </div>\r\n                        `;\r\n\r\n                        frm.fields_dict.custom_recce_details.$wrapper.html(recce_html);\r\n\r\n                    }\r\n\r\n                }\r\n\r\n            });\r\n\r\n        }\r\n\r\n    }\r\n\r\n});",
+  "view": "Form"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Client Script",
+  "dt": "Purchase Receipt",
+  "enabled": 1,
+  "modified": "2026-04-29 00:02:07.465689",
+  "module": "Swift Fix",
+  "name": "Purchase Receipt QC Validation",
+  "script": "frappe.ui.form.on('Purchase Receipt', {\r\n\r\n    validate(frm) {\r\n\r\n        if (!frm.doc.qc_length || !frm.doc.qc_height || !frm.doc.qc_depth) {\r\n\r\n            frappe.throw(\"QC Dimensions are mandatory\");\r\n\r\n        }\r\n\r\n        if (!frm.doc.qc_photo1 || !frm.doc.qc_photo2) {\r\n\r\n            frappe.throw(\"QC Photos are mandatory\");\r\n\r\n        }\r\n\r\n    }\r\n\r\n});",
+  "view": "Form"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Client Script",
+  "dt": "Purchase Receipt",
+  "enabled": 1,
+  "modified": "2026-04-29 00:03:28.601654",
+  "module": "Swift Fix",
+  "name": "Purchase Receipt Serial Button",
+  "script": "frappe.ui.form.on('Purchase Receipt', {\r\n\r\n    refresh(frm) {\r\n\r\n        if (frm.doc.docstatus === 1) {\r\n\r\n            frm.add_custom_button(\"Generate Serial Number\", function() {\r\n\r\n                frappe.msgprint(\"Serial Number generation ready\");\r\n\r\n            });\r\n\r\n        }\r\n\r\n    }\r\n\r\n});",
+  "view": "Form"
+ }
+]

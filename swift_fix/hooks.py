@@ -8,7 +8,7 @@ app_license = "mit"
 # Apps
 # ------------------
 
-# required_apps = []
+required_apps = ["erpnext"]
 
 # Each item in the list will be shown as an app in the apps page
 # add_to_apps_screen = [
@@ -256,3 +256,15 @@ app_license = "mit"
 # List of apps whose translatable strings should be excluded from this app's translations.
 # ignore_translatable_strings_from = []
 
+fixtures = [
+    {"doctype": "Custom Field"},
+    {"doctype": "Client Script"},
+    {"doctype": "Server Script"},
+    {"doctype": "Workflow"},
+    {"doctype": "Workflow State"},
+    {"doctype": "Workflow Action Master"},
+    {"doctype": "Role"},
+    {"doctype": "Custom DocPerm"}
+]
+
+after_install = "swift_fix.setup.install.after_install"

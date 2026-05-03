@@ -1,0 +1,166 @@
+[
+ {
+  "docstatus": 0,
+  "doctype": "Workflow",
+  "document_type": "Purchase Receipt",
+  "enable_action_confirmation": 0,
+  "is_active": 1,
+  "modified": "2026-04-29 02:35:17.638117",
+  "name": "QC Verification",
+  "override_status": 0,
+  "send_email_alert": 0,
+  "states": [
+   {
+    "allow_edit": "Quality Manager",
+    "avoid_status_override": 0,
+    "doc_status": "0",
+    "evaluate_as_expression": 0,
+    "is_optional_state": 0,
+    "message": null,
+    "next_action_email_template": null,
+    "send_email": 1,
+    "state": "Draft",
+    "update_field": null,
+    "update_value": null,
+    "workflow_builder_id": null
+   },
+   {
+    "allow_edit": "Quality Manager",
+    "avoid_status_override": 0,
+    "doc_status": "0",
+    "evaluate_as_expression": 0,
+    "is_optional_state": 0,
+    "message": null,
+    "next_action_email_template": null,
+    "send_email": 1,
+    "state": "QC Verified",
+    "update_field": null,
+    "update_value": null,
+    "workflow_builder_id": null
+   },
+   {
+    "allow_edit": "Manager",
+    "avoid_status_override": 0,
+    "doc_status": "1",
+    "evaluate_as_expression": 0,
+    "is_optional_state": 0,
+    "message": null,
+    "next_action_email_template": null,
+    "send_email": 1,
+    "state": "Submitted",
+    "update_field": null,
+    "update_value": null,
+    "workflow_builder_id": null
+   }
+  ],
+  "transitions": [
+   {
+    "action": "Verify QC",
+    "allow_self_approval": 1,
+    "allowed": "Quality Manager",
+    "condition": null,
+    "next_state": "QC Verified",
+    "send_email_to_creator": 0,
+    "state": "Draft",
+    "transition_tasks": null,
+    "workflow_builder_id": null
+   },
+   {
+    "action": "Submit",
+    "allow_self_approval": 1,
+    "allowed": "Manager",
+    "condition": null,
+    "next_state": "Submitted",
+    "send_email_to_creator": 0,
+    "state": "QC Verified",
+    "transition_tasks": null,
+    "workflow_builder_id": null
+   }
+  ],
+  "workflow_data": null,
+  "workflow_name": "QC Verification",
+  "workflow_state_field": "workflow_state"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Workflow",
+  "document_type": "Asset Capitalization",
+  "enable_action_confirmation": 0,
+  "is_active": 1,
+  "modified": "2026-04-29 02:44:59.741175",
+  "name": "Installation Workflow",
+  "override_status": 0,
+  "send_email_alert": 0,
+  "states": [
+   {
+    "allow_edit": "Technician",
+    "avoid_status_override": 0,
+    "doc_status": "0",
+    "evaluate_as_expression": 0,
+    "is_optional_state": 0,
+    "message": null,
+    "next_action_email_template": null,
+    "send_email": 1,
+    "state": "Draft",
+    "update_field": null,
+    "update_value": null,
+    "workflow_builder_id": null
+   },
+   {
+    "allow_edit": "Technician",
+    "avoid_status_override": 0,
+    "doc_status": "0",
+    "evaluate_as_expression": 0,
+    "is_optional_state": 0,
+    "message": null,
+    "next_action_email_template": null,
+    "send_email": 1,
+    "state": "Installation Done",
+    "update_field": null,
+    "update_value": null,
+    "workflow_builder_id": null
+   },
+   {
+    "allow_edit": "Manager",
+    "avoid_status_override": 0,
+    "doc_status": "1",
+    "evaluate_as_expression": 0,
+    "is_optional_state": 0,
+    "message": null,
+    "next_action_email_template": null,
+    "send_email": 1,
+    "state": "Submitted",
+    "update_field": null,
+    "update_value": null,
+    "workflow_builder_id": null
+   }
+  ],
+  "transitions": [
+   {
+    "action": "Install Asset",
+    "allow_self_approval": 1,
+    "allowed": "Technician",
+    "condition": null,
+    "next_state": "Installation Done",
+    "send_email_to_creator": 0,
+    "state": "Draft",
+    "transition_tasks": null,
+    "workflow_builder_id": null
+   },
+   {
+    "action": "Submit",
+    "allow_self_approval": 1,
+    "allowed": "Manager",
+    "condition": null,
+    "next_state": "Submitted",
+    "send_email_to_creator": 0,
+    "state": "Installation Done",
+    "transition_tasks": null,
+    "workflow_builder_id": null
+   }
+  ],
+  "workflow_data": null,
+  "workflow_name": "Installation Workflow",
+  "workflow_state_field": "workflow_state"
+ }
+]
