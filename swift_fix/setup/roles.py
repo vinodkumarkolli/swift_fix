@@ -2,10 +2,10 @@ import frappe
 
 ROLES = [
     "Field User",
-    "Manager",
+    "Purchase Manager",
     "Quality Manager",
     "Vendor Technician",
-    "Technician",
+    "Internal Technician",
     "Vendor Admin"
 ]
 

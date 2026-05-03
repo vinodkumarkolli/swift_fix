@@ -32,17 +32,17 @@ def setup_permissions():
         },
 
         "Request for Quotation": {
-            "Manager": ["read", "write", "submit"],
+            "Purchase Manager": ["read", "write", "create", "submit"],
             "Vendor Technician": ["read", "write"]
         },
 
         "Supplier Quotation": {
-            "Manager": ["read", "write", "submit"],
-            "Vendor Admin": ["read", "submit"]
+            "Purchase Manager": ["read", "write","cancel", "submit"],
+            "Vendor Admin": ["read","write","create","cancel", "submit"]
         },
 
         "Purchase Order": {
-            "Manager": ["read", "write", "submit"]
+            "Purchase Manager": ["read", "write","create", "submit"]
         },
 
         "Purchase Receipt": {
@@ -50,12 +50,12 @@ def setup_permissions():
         },
 
         "Asset Capitalization": {
-            "Technician": ["read", "write", "submit"],
-            "Vendor Technician": ["read", "write"]
+            "Internal Technician": ["read", "write", "submit"],
+            "Vendor Technician": ["read", "write","create","submit"]
         },
 
         "Asset Maintenance Log": {
-            "Technician": ["read", "write", "submit"]
+            "Internal Technician": ["read", "write","create","submit"]
         }
 
     }
