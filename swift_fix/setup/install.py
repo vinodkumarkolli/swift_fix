@@ -67,7 +67,10 @@ def setup_permissions():
         },
 
         "Purchase Order": {
-            "Purchase Manager": ["read", "write","create", "submit"]
+            "Purchase Manager": ["read", "write","create", "submit"],
+            "Vendor Technician": ["read"],
+            "Vendor Admin": ["read"],
+            "Internal Technician": ["read"]
         },
 
         "Purchase Receipt": {
