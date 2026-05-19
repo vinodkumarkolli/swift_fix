@@ -268,3 +268,4 @@ fixtures = [
 ]
 
 after_install = "swift_fix.setup.install.after_install"
+after_migrate = "swift_fix.setup.install.after_migrate"
