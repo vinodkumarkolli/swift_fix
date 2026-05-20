@@ -15,10 +15,10 @@
   "doctype": "Client Script",
   "dt": "Request for Quotation",
   "enabled": 1,
-  "modified": "2026-04-28 23:55:05.673670",
+  "modified": "2026-05-20 17:04:00.213417",
   "module": "Swift Fix",
   "name": "RFQ Recce Timestamp",
-  "script": "frappe.ui.form.on('Request for Quotation', {\r\n\r\n    recce_length(frm) {\r\n\r\n        if (!frm.doc.recced_timestamp) {\r\n\r\n            frm.set_value(\r\n                \"recced_timestamp\",\r\n                frappe.datetime.now_datetime()\r\n            );\r\n\r\n        }\r\n\r\n    }\r\n\r\n});",
+  "script": "frappe.ui.form.on('Request for Quotation', {\r\n    \r\n    refresh(frm) {\r\n        // Toggle the Create button layout when the form loads\r\n        toggle_create_button(frm);\r\n    },\r\n\r\n    custom_recce_status(frm) {\r\n        // Toggle the Create button layout instantly if the dropdown choice changes\r\n        toggle_create_button(frm);\r\n    },\r\n    custom_recce_length(frm) {\r\n\r\n        if (!frm.doc.custom_recced_timestamp) {\r\n\r\n            frm.set_value(\r\n                \"custom_recced_timestamp\",\r\n                frappe.datetime.now_datetime()\r\n            );\r\n\r\n        }\r\n\r\n    }\r\n\r\n});\r\n// Helper function using actual Frappe Page API architecture\r\nfunction toggle_create_button(frm) {\r\n    // Target the main 'Create' dropdown button element wrapper\r\n    let $create_group = frm.page.get_inner_group_button(__(\"Create\"));\r\n\r\n    if (frm.doc.custom_recce_status === 'Validated') {\r\n        if ($create_group) {\r\n            $create_group.show();\r\n        }\r\n    } else {\r\n        // First, strip the child elements safely to prevent core execution hooks from maintaining focus\r\n        frm.remove_custom_button(__(\"Supplier Quotation\"), __(\"Create\"));\r\n        \r\n        // Hide the parent action button dropdown element completely\r\n        if ($create_group) {\r\n            $create_group.hide();\r\n        }\r\n    }\r\n}",
   "view": "Form"
  },
  {
@@ -29,7 +29,7 @@
   "modified": "2026-04-29 03:29:21.353445",
   "module": "Swift Fix",
   "name": "Supplier Quotation Recce Fetch",
-  "script": "frappe.ui.form.on('Supplier Quotation', {\r\n\r\n    request_for_quotation(frm) {\r\n\r\n        if (frm.doc.request_for_quotation) {\r\n\r\n            frappe.call({\r\n\r\n                method: \"frappe.client.get\",\r\n\r\n                args: {\r\n                    doctype: \"Request for Quotation\",\r\n                    name: frm.doc.request_for_quotation\r\n                },\r\n\r\n                callback: function(r) {\r\n\r\n                    let rfq = r.message;\r\n\r\n                    if (rfq) {\r\n\r\n                        frm.set_value(\"location\", rfq.location);\r\n                        frm.set_value(\"lead\", rfq.lead);\r\n\r\n                        let recce_html = `\r\n                        <div style=\"padding:10px\">\r\n                        <b>Recce Details</b><br><br>\r\n                        Length : ${rfq.recce_length || \"\"}<br>\r\n                        Height : ${rfq.recce_height || \"\"}<br>\r\n                        Depth : ${rfq.recce_depth || \"\"}<br>\r\n                        </div>\r\n                        `;\r\n\r\n                        frm.fields_dict.custom_recce_details.$wrapper.html(recce_html);\r\n\r\n                    }\r\n\r\n                }\r\n\r\n            });\r\n\r\n        }\r\n\r\n    }\r\n\r\n});",
+  "script": "frappe.ui.form.on('Supplier Quotation', {\r\n    refresh(frm) {\r\n        load_rfq_details(frm);\r\n    },\r\n    request_for_quotation(frm) {\r\n        load_rfq_details(frm);\r\n    }\r\n});\r\n\r\nfunction load_rfq_details(frm) {\r\n    let rfq = \"\";\r\n    let material_request = \"\";\r\n    if (frm.doc.items && frm.doc.items.length) {\r\n        for (let item of frm.doc.items) {\r\n            if (item.request_for_quotation) {\r\n                rfq = item.request_for_quotation;\r\n            }\r\n            if (item.material_request) {\r\n                material_request = item.material_request;\r\n            }\r\n            if (rfq && material_request) {\r\n                break;\r\n            }\r\n        }\r\n    }\r\n    if (material_request) {\r\n        frm.set_value(\"custom_request_id\", material_request);\r\n    }\r\n    if (rfq) {\r\n        frappe.db.get_value(\"Request for Quotation\", rfq, [\r\n            \"custom_location\",\r\n            \"custom_request_details\",\r\n            \"custom_recce_length\",\r\n            \"custom_recce_height\",\r\n            \"custom_recce_depth\",\r\n            \"custom_recce_photo_1\",\r\n            \"custom_recce_photo_2\"\r\n        ], function(r) {\r\n            if (r) {\r\n                frm.set_value(\"custom_location\", r.custom_location);\r\n                if (r.custom_request_details) {\r\n                    frm.set_value(\"custom_request_id\", r.custom_request_details);\r\n                }\r\n                \r\n                let recce_html = `\r\n                <div style=\"padding:10px\">\r\n                <b>Recce Details</b><br><br>\r\n                Length : ${r.custom_recce_length || \"\"}<br>\r\n                Height : ${r.custom_recce_height || \"\"}<br>\r\n                Depth : ${r.custom_recce_depth || \"\"}<br><br>\r\n                `;\r\n                \r\n                if (r.custom_recce_photo_1) {\r\n                    recce_html += `<b>Photo 1:</b><br><img src=\\\"${r.custom_recce_photo_1}\\\" style=\\\"max-width: 100%; max-height: 250px; margin-top: 5px; margin-bottom: 15px; border-radius: 4px; border: 1px solid #ddd;\\\"><br>`;\r\n                }\r\n                if (r.custom_recce_photo_2) {\r\n                    recce_html += `<b>Photo 2:</b><br><img src=\\\"${r.custom_recce_photo_2}\\\" style=\\\"max-width: 100%; max-height: 250px; margin-top: 5px; margin-bottom: 15px; border-radius: 4px; border: 1px solid #ddd;\\\"><br>`;\r\n                }\r\n                \r\n                recce_html += `</div>`;\r\n                \r\n                if (frm.fields_dict.custom_recce_details) {\r\n                    frm.fields_dict.custom_recce_details.$wrapper.html(recce_html);\r\n                }\r\n            }\r\n        });\r\n    }\r\n}",
   "view": "Form"
  },
  {
@@ -52,6 +52,17 @@
   "module": "Swift Fix",
   "name": "Purchase Receipt Serial Button",
   "script": "frappe.ui.form.on('Purchase Receipt', {\r\n\r\n    refresh(frm) {\r\n\r\n        if (frm.doc.docstatus === 1) {\r\n\r\n            frm.add_custom_button(\"Generate Serial Number\", function() {\r\n\r\n                frappe.msgprint(\"Serial Number generation ready\");\r\n\r\n            });\r\n\r\n        }\r\n\r\n    }\r\n\r\n});",
+  "view": "Form"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Client Script",
+  "dt": "Material Request",
+  "enabled": 1,
+  "modified": "2026-05-20 17:30:00",
+  "module": "Swift Fix",
+  "name": "Material Request Hide Create Buttons",
+  "script": "frappe.ui.form.on('Material Request', {\r\n    refresh(frm) {\r\n        if (frm.doc.docstatus === 1) {\r\n            frm.remove_custom_button(__('Purchase Order'), __('Create'));\r\n            frm.remove_custom_button(__('Supplier Quotation'), __('Create'));\r\n        }\r\n    }\r\n});",
   "view": "Form"
  }
 ]
