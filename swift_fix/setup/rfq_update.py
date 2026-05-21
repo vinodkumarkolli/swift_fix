@@ -5,12 +5,13 @@ def clean_val(val):
         return val.strip('"').strip("'")
     return val
 
-@frappe.whitelist(allow_guest=True)
+@frappe.whitelist()
 def rfq_change_recce_status(doc,to_state):
     doc = clean_val(doc)
     to_state = clean_val(to_state)
     ## fetch the request for quotation document
     rfq = frappe.get_doc("Request for Quotation", doc)
+    rfq.check_permission("write")
     ## check the docstatus =1. if yes, modify the custom_recce_status to `to_state` and validate if `to_state` is any of following
     ## ["Recced","Validated","Invalidated","Not_Recced"]
     if rfq.docstatus == 1 and to_state in ["Validated","Invalidated"]:
@@ -21,7 +22,7 @@ def rfq_change_recce_status(doc,to_state):
     else:
         frappe.throw("Invalid state")
 
-@frappe.whitelist(allow_guest=True)
+@frappe.whitelist()
 def rfq_update_dimensions(doc,user,length,height,depth):
     doc = clean_val(doc)
     length = clean_val(length)
@@ -29,6 +30,7 @@ def rfq_update_dimensions(doc,user,length,height,depth):
     depth = clean_val(depth)
     ## fetch the request for quotation document
     rfq = frappe.get_doc("Request for Quotation", doc)
+    rfq.check_permission("write")
     ## check the docstatus =1. if yes, modify the custom_recce_length, custom_recce_height, custom_recce_depth to `length`,`height`,`depth` and validate if 
     if rfq.docstatus == 1:
         rfq.set("custom_recce_length", frappe.utils.flt(length))
@@ -78,7 +80,7 @@ def save_image_from_url(image_url, doctype, docname, fieldname):
 
     return file_doc.file_url
 
-@frappe.whitelist(allow_guest=True)
+@frappe.whitelist()
 def rfq_update_dimensions_with_images(doc, user, length, height, depth, image1_url=None, image2_url=None):
     doc = clean_val(doc)
     length = clean_val(length)
@@ -88,6 +90,7 @@ def rfq_update_dimensions_with_images(doc, user, length, height, depth, image1_u
     image2_url = clean_val(image2_url)
     ## fetch the request for quotation document
     rfq = frappe.get_doc("Request for Quotation", doc)
+    rfq.check_permission("write")
 
     ## check the docstatus = 1. if yes, modify dimensions and photos
     if rfq.docstatus == 1:
@@ -113,3 +116,20 @@ def rfq_update_dimensions_with_images(doc, user, length, height, depth, image1_u
         }
     else:
         frappe.throw("Invalid state")
+
+def validate_rfq(doc, method):
+    if not doc.custom_request_details:
+        frappe.throw(frappe._("Please link a Material Request (Request Details) first."))
+    
+    mr_status = frappe.db.get_value("Material Request", doc.custom_request_details, "custom_processing_status")
+    if mr_status != "Shortlisted":
+        frappe.throw(
+            frappe._("Request for Quotation cannot be saved. The linked Material Request {0} must be in 'Shortlisted' status (current status: {1}).").format(
+                doc.custom_request_details, mr_status or "None"
+            )
+        )
+
+def on_rfq_submit(doc, method):
+    if doc.custom_request_details:
+        mr = frappe.get_doc("Material Request", doc.custom_request_details)
+        mr.add_comment("Comment", text="A Quotation is requested from Vendor and Recce Process is in Progress")

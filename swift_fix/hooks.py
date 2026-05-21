@@ -138,13 +138,33 @@ required_apps = ["erpnext"]
 # ---------------
 # Hook on document methods and events
 
-# doc_events = {
-# 	"*": {
-# 		"on_update": "method",
-# 		"on_cancel": "method",
-# 		"on_trash": "method"
-# 	}
-# }
+doc_events = {
+	"Material Request": {
+		"validate": "swift_fix.setup.mr_utils.validate_mr"
+	},
+	"Request for Quotation": {
+		"validate": "swift_fix.setup.rfq_update.validate_rfq",
+		"on_submit": "swift_fix.setup.rfq_update.on_rfq_submit"
+	},
+	"Purchase Order": {
+		"on_submit": "swift_fix.setup.popr_utils.on_po_submit"
+	},
+	"Purchase Receipt": {
+		"on_submit": [
+			"swift_fix.setup.popr_utils.on_pr_submit",
+			"swift_fix.setup.popr_utils.create_purchase_receipt_serial_nos"
+		]
+	},
+	"Asset Capitalization": {
+		"on_submit": "swift_fix.setup.popr_utils.on_asset_capitalization_submit"
+	},
+	"Asset": {
+		"after_insert": "swift_fix.setup.popr_utils.generate_asset_qr"
+	},
+	"Purchase Invoice": {
+		"before_submit": "swift_fix.setup.popr_utils.check_purchase_invoice_capitalization"
+	}
+}
 
 # Scheduled Tasks
 # ---------------
@@ -259,10 +279,6 @@ required_apps = ["erpnext"]
 fixtures = [
     {"doctype": "Custom Field", "filters":{"module":["in",["Swift Fix"]]}},
     {"doctype": "Client Script"},
-    {"doctype": "Server Script"},
-    {"doctype": "Workflow"},
-    {"doctype": "Workflow State"},
-    {"doctype": "Workflow Action Master"},
     {"doctype": "Role"},
     # {"doctype": "Custom DocPerm"}
 ]

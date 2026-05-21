@@ -19,19 +19,10 @@ def create_roles():
 
 
 def add_permission(doctype, role, perms):
-    meta = frappe.get_meta(doctype)
-
-    # check if permission already exists
-    permission_exists = False
-    for p in meta.permissions:
-        if p.role == role:
-            permission_exists = True
-            break
-
-    if permission_exists:
+    # Only delete and manage Custom DocPerm to avoid corrupting standard system-level DocPerm entries
+    if frappe.db.exists("Custom DocPerm", {"parent": doctype, "role": role}):
         frappe.db.delete("Custom DocPerm", {"parent": doctype, "role": role})
-        frappe.db.delete("DocPerm", {"parent": doctype, "role": role})
-        print(f"Deleted existing permissions for Role: '{role}' on DocType: '{doctype}'")
+        print(f"Deleted existing custom permissions for Role: '{role}' on DocType: '{doctype}'")
 
     perm = frappe.get_doc({
         "doctype": "Custom DocPerm",
