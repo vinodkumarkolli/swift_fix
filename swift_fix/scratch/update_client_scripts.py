@@ -62,7 +62,7 @@ function load_material_request_details(frm) {
     }
 
     frappe.call({
-        method: 'swift_fix.setup.rfq_update.get_linked_mr_html',
+        method: 'swift_fix.setup.utils.get_asset_html',
         args: {
             doctype: frm.doc.doctype,
             docname: frm.doc.name
@@ -133,7 +133,7 @@ function load_material_request_details(frm) {
     }
 
     frappe.call({
-        method: 'swift_fix.setup.rfq_update.get_linked_mr_html',
+        method: 'swift_fix.setup.utils.get_asset_html',
         args: {
             doctype: frm.doc.doctype,
             docname: frm.doc.name
@@ -224,7 +224,7 @@ function load_material_request_details(frm) {
     }
 
     frappe.call({
-        method: 'swift_fix.setup.rfq_update.get_linked_mr_html',
+        method: 'swift_fix.setup.utils.get_asset_html',
         args: {
             doctype: frm.doc.doctype,
             docname: frm.doc.name
@@ -271,7 +271,7 @@ function load_material_request_details(frm) {
     }
 
     frappe.call({
-        method: 'swift_fix.setup.rfq_update.get_linked_mr_html',
+        method: 'swift_fix.setup.utils.get_asset_html',
         args: {
             doctype: frm.doc.doctype,
             docname: frm.doc.name
@@ -297,14 +297,15 @@ function setup_global_mr_details_popup() {
     
     window.show_mr_flow_details = function(mr_name) {
         frappe.call({
-            method: 'swift_fix.setup.rfq_update.get_mr_flow_details',
+            method: 'swift_fix.setup.utils.get_historic_flow_details',
             args: { mr_name: mr_name },
             callback: function(r) {
                 if (!r.message) return;
                 let data = r.message;
                 
+                let title_text = data.is_stock_led ? __('Stock-led Capitalization Details: {0}', [mr_name]) : __('Procurement Flow Details: {0}', [mr_name]);
                 let d = new frappe.ui.Dialog({
-                    title: __('Procurement Flow Details: {0}', [mr_name]),
+                    title: title_text,
                     fields: [
                         {
                             fieldtype: 'HTML',
@@ -395,19 +396,19 @@ function setup_global_mr_details_popup() {
                         </style>
                 `;
                 
-                // 0. Requested Items
+                // 0. Requested/Consumed Items
                 if (data.mr_items && data.mr_items.length) {
                     html += `
                         <div class="detail-section" style="border-left: 4px solid var(--primary, #1b66ec);">
                             <div class="detail-title">
-                                <span>Requested Items</span>
+                                <span>${data.is_stock_led ? 'Consumed Stock Items' : 'Requested Items'}</span>
                             </div>
                             <div style="display: flex; flex-direction: column; gap: 10px;">
                     `;
                     data.mr_items.forEach(item => {
                         let item_quotes = data.sqs ? data.sqs.filter(q => q.item_code === item.item_code) : [];
                         let quotes_html = '';
-                        if (item_quotes.length) {
+                        if (!data.is_stock_led && item_quotes.length) {
                             quotes_html += `
                                 <div style="margin-top: 8px; padding: 8px 12px; background: var(--fg-color, #f8fafc); border-radius: 6px; border: 1px solid var(--border-color, #e2e8f0);">
                                     <div style="font-size: 11px; font-weight: 600; color: var(--text-muted, #64748b); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">Supplier Quotes</div>
@@ -439,156 +440,158 @@ function setup_global_mr_details_popup() {
                     html += `</div></div>`;
                 }
 
-                // 1. RFQ Details
-                if (data.rfq && data.rfq.length) {
-                    data.rfq.forEach(rfq => {
-                        let link = frappe.utils.get_form_link('Request for Quotation', rfq.name);
+                if (!data.is_stock_led) {
+                    // 1. RFQ Details
+                    if (data.rfq && data.rfq.length) {
+                        data.rfq.forEach(rfq => {
+                            let link = frappe.utils.get_form_link('Request for Quotation', rfq.name);
+                            html += `
+                                <div class="detail-section">
+                                    <div class="detail-title">
+                                        <span>Request for Quotation: <a href="${link}" target="_blank" style="color: var(--primary, #1b66ec); font-weight: 700; text-decoration: underline;">${rfq.name}</a></span>
+                                        <span class="badge" style="background-color: #dbeafe; color: #1e40af; padding: 4px 10px; border-radius: 9999px;">${rfq.status}</span>
+                                    </div>
+                                    <div class="detail-grid">
+                                        <div class="detail-item">
+                                            <div class="detail-label">Recce Status</div>
+                                            <div class="detail-value">${rfq.custom_recce_status || 'Pending'}</div>
+                                        </div>
+                                        <div class="detail-item">
+                                            <div class="detail-label">Dimensions</div>
+                                            <div class="detail-value">${rfq.custom_recce_length || '0'}L x ${rfq.custom_recce_height || '0'}H x ${rfq.custom_recce_depth || '0'}D Ft</div>
+                                        </div>
+                                    </div>
+                            `;
+                            if (rfq.custom_recce_photo_1 || rfq.custom_recce_photo_2) {
+                                html += `
+                                    <div style="margin-top: 12px;">
+                                        <div class="detail-label">Recce Photos</div>
+                                        <div class="thumbnail-container">
+                                `;
+                                if (rfq.custom_recce_photo_1) {
+                                    html += `<a href="${rfq.custom_recce_photo_1}" target="_blank"><img src="${rfq.custom_recce_photo_1}" class="thumbnail-img"></a>`;
+                                }
+                                if (rfq.custom_recce_photo_2) {
+                                    html += `<a href="${rfq.custom_recce_photo_2}" target="_blank"><img src="${rfq.custom_recce_photo_2}" class="thumbnail-img"></a>`;
+                                }
+                                html += `</div></div>`;
+                            }
+                            html += `</div>`;
+                        });
+                    } else {
+                        html += `
+                            <div class="detail-section" style="border-style: dashed; opacity: 0.6;">
+                                <div class="detail-title" style="border-bottom: none; margin-bottom: 0; font-style: italic; font-weight: 500; color: var(--text-muted, #64748b);">No Request for Quotation linked yet.</div>
+                            </div>
+                        `;
+                    }
+
+                    // 2. Supplier Quotations
+                    if (data.sqs && data.sqs.length) {
                         html += `
                             <div class="detail-section">
-                                <div class="detail-title">
-                                    <span>Request for Quotation: <a href="${link}" target="_blank" style="color: var(--primary, #1b66ec); font-weight: 700; text-decoration: underline;">${rfq.name}</a></span>
-                                    <span class="badge" style="background-color: #dbeafe; color: #1e40af; padding: 4px 10px; border-radius: 9999px;">${rfq.status}</span>
-                                </div>
-                                <div class="detail-grid">
-                                    <div class="detail-item">
-                                        <div class="detail-label">Recce Status</div>
-                                        <div class="detail-value">${rfq.custom_recce_status || 'Pending'}</div>
-                                    </div>
-                                    <div class="detail-item">
-                                        <div class="detail-label">Dimensions</div>
-                                        <div class="detail-value">${rfq.custom_recce_length || '0'}L x ${rfq.custom_recce_height || '0'}H x ${rfq.custom_recce_depth || '0'}D Ft</div>
-                                    </div>
-                                </div>
+                                <div class="detail-title">Supplier Quotations</div>
+                                <table class="popup-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Quotation</th>
+                                            <th>Supplier</th>
+                                            <th>Status</th>
+                                            <th style="text-align: right;">Rate</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
                         `;
-                        if (rfq.custom_recce_photo_1 || rfq.custom_recce_photo_2) {
+                        data.sqs.forEach(sq => {
+                            let link = frappe.utils.get_form_link('Supplier Quotation', sq.name);
                             html += `
-                                <div style="margin-top: 12px;">
-                                    <div class="detail-label">Recce Photos</div>
-                                    <div class="thumbnail-container">
+                                <tr>
+                                    <td><a href="${link}" target="_blank" style="color: var(--primary, #1b66ec); font-weight: 700; text-decoration: underline;">${sq.name}</a></td>
+                                    <td>${sq.supplier}</td>
+                                    <td><span class="badge" style="background-color: #f1f5f9; color: #475569; padding: 4px 10px; border-radius: 9999px;">${sq.status}</span></td>
+                                    <td style="text-align: right; font-weight: 700; color: var(--primary, #1b66ec);">${frappe.format(sq.rate, {fieldtype: 'Currency'})}</td>
+                                </tr>
                             `;
-                            if (rfq.custom_recce_photo_1) {
-                                html += `<a href="${rfq.custom_recce_photo_1}" target="_blank"><img src="${rfq.custom_recce_photo_1}" class="thumbnail-img"></a>`;
-                            }
-                            if (rfq.custom_recce_photo_2) {
-                                html += `<a href="${rfq.custom_recce_photo_2}" target="_blank"><img src="${rfq.custom_recce_photo_2}" class="thumbnail-img"></a>`;
-                            }
-                            html += `</div></div>`;
-                        }
-                        html += `</div>`;
-                    });
-                } else {
-                    html += `
-                        <div class="detail-section" style="border-style: dashed; opacity: 0.6;">
-                            <div class="detail-title" style="border-bottom: none; margin-bottom: 0; font-style: italic; font-weight: 500; color: var(--text-muted, #64748b);">No Request for Quotation linked yet.</div>
-                        </div>
-                    `;
-                }
+                        });
+                        html += `</tbody></table></div>`;
+                    }
 
-                // 2. Supplier Quotations
-                if (data.sqs && data.sqs.length) {
-                    html += `
-                        <div class="detail-section">
-                            <div class="detail-title">Supplier Quotations</div>
-                            <table class="popup-table">
-                                <thead>
-                                    <tr>
-                                        <th>Quotation</th>
-                                        <th>Supplier</th>
-                                        <th>Status</th>
-                                        <th style="text-align: right;">Rate</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                    `;
-                    data.sqs.forEach(sq => {
-                        let link = frappe.utils.get_form_link('Supplier Quotation', sq.name);
-                        html += `
-                            <tr>
-                                <td><a href="${link}" target="_blank" style="color: var(--primary, #1b66ec); font-weight: 700; text-decoration: underline;">${sq.name}</a></td>
-                                <td>${sq.supplier}</td>
-                                <td><span class="badge" style="background-color: #f1f5f9; color: #475569; padding: 4px 10px; border-radius: 9999px;">${sq.status}</span></td>
-                                <td style="text-align: right; font-weight: 700; color: var(--primary, #1b66ec);">${frappe.format(sq.rate, {fieldtype: 'Currency'})}</td>
-                            </tr>
-                        `;
-                    });
-                    html += `</tbody></table></div>`;
-                }
-
-                // 2.5 Purchase Orders
-                if (data.pos && data.pos.length) {
-                    html += `
-                        <div class="detail-section">
-                            <div class="detail-title">Purchase Orders</div>
-                            <table class="popup-table">
-                                <thead>
-                                    <tr>
-                                        <th>Purchase Order</th>
-                                        <th>Date</th>
-                                        <th>Status</th>
-                                        <th style="text-align: right;">Rate</th>
-                                        <th style="text-align: right;">Total</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                    `;
-                    data.pos.forEach(po => {
-                        let link = frappe.utils.get_form_link('Purchase Order', po.name);
-                        html += `
-                            <tr>
-                                <td><a href="${link}" target="_blank" style="color: var(--primary, #1b66ec); font-weight: 700; text-decoration: underline;">${po.name}</a></td>
-                                <td>${po.date || '-'}</td>
-                                <td><span class="badge" style="background-color: #f1f5f9; color: #475569; padding: 4px 10px; border-radius: 9999px;">${po.status}</span></td>
-                                <td style="text-align: right; font-weight: 700; color: var(--text-color, #1e293b);">${frappe.format(po.rate, {fieldtype: 'Currency'})}</td>
-                                <td style="text-align: right; font-weight: 700; color: var(--primary, #1b66ec);">${frappe.format(po.grand_total, {fieldtype: 'Currency'})}</td>
-                            </tr>
-                        `;
-                    });
-                    html += `</tbody></table></div>`;
-                }
-
-                // 3. Purchase Receipts
-                if (data.prs && data.prs.length) {
-                    data.prs.forEach(pr => {
-                        let link = frappe.utils.get_form_link('Purchase Receipt', pr.name);
+                    // 2.5 Purchase Orders
+                    if (data.pos && data.pos.length) {
                         html += `
                             <div class="detail-section">
-                                <div class="detail-title">
-                                    <span>Purchase Receipt & QC: <a href="${link}" target="_blank" style="color: var(--primary, #1b66ec); font-weight: 700; text-decoration: underline;">${pr.name}</a></span>
-                                    <span class="badge" style="background-color: #d1fae5; color: #065f46; padding: 4px 10px; border-radius: 9999px;">${pr.status}</span>
-                                </div>
-                                <div class="detail-grid">
-                                    <div class="detail-item">
-                                        <div class="detail-label">QC Dimensions</div>
-                                        <div class="detail-value">${pr.custom_qc_length || '0'}L x ${pr.custom_qc_height || '0'}H x ${pr.custom_qc_depth || '0'}D Ft</div>
-                                    </div>
-                                </div>
-                                <div style="margin-top: 10px;">
-                                    <div class="detail-label">QC Notes</div>
-                                    <div class="detail-value" style="font-weight: normal; background: var(--fg-color, #f8fafc); padding: 10px; border-radius: 6px; border: 1px solid var(--border-color, #e2e8f0); margin-top: 4px; font-size: 13px;">${pr.custom_qc_notes || 'No notes added'}</div>
-                                </div>
+                                <div class="detail-title">Purchase Orders</div>
+                                <table class="popup-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Purchase Order</th>
+                                            <th>Date</th>
+                                            <th>Status</th>
+                                            <th style="text-align: right;">Rate</th>
+                                            <th style="text-align: right;">Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
                         `;
-                        if (pr.custom_qc_photo_1 || pr.custom_qc_photo_2) {
+                        data.pos.forEach(po => {
+                            let link = frappe.utils.get_form_link('Purchase Order', po.name);
                             html += `
-                                <div style="margin-top: 12px;">
-                                    <div class="detail-label">QC Photos</div>
-                                    <div class="thumbnail-container">
+                                <tr>
+                                    <td><a href="${link}" target="_blank" style="color: var(--primary, #1b66ec); font-weight: 700; text-decoration: underline;">${po.name}</a></td>
+                                    <td>${po.date || '-'}</td>
+                                    <td><span class="badge" style="background-color: #f1f5f9; color: #475569; padding: 4px 10px; border-radius: 9999px;">${po.status}</span></td>
+                                    <td style="text-align: right; font-weight: 700; color: var(--text-color, #1e293b);">${frappe.format(po.rate, {fieldtype: 'Currency'})}</td>
+                                    <td style="text-align: right; font-weight: 700; color: var(--primary, #1b66ec);">${frappe.format(po.grand_total, {fieldtype: 'Currency'})}</td>
+                                </tr>
                             `;
-                            if (pr.custom_qc_photo_1) {
-                                html += `<a href="${pr.custom_qc_photo_1}" target="_blank"><img src="${pr.custom_qc_photo_1}" class="thumbnail-img"></a>`;
+                        });
+                        html += `</tbody></table></div>`;
+                    }
+
+                    // 3. Purchase Receipts
+                    if (data.prs && data.prs.length) {
+                        data.prs.forEach(pr => {
+                            let link = frappe.utils.get_form_link('Purchase Receipt', pr.name);
+                            html += `
+                                <div class="detail-section">
+                                    <div class="detail-title">
+                                        <span>Purchase Receipt & QC: <a href="${link}" target="_blank" style="color: var(--primary, #1b66ec); font-weight: 700; text-decoration: underline;">${pr.name}</a></span>
+                                        <span class="badge" style="background-color: #d1fae5; color: #065f46; padding: 4px 10px; border-radius: 9999px;">${pr.status}</span>
+                                    </div>
+                                    <div class="detail-grid">
+                                        <div class="detail-item">
+                                            <div class="detail-label">QC Dimensions</div>
+                                            <div class="detail-value">${pr.custom_qc_length || '0'}L x ${pr.custom_qc_height || '0'}H x ${pr.custom_qc_depth || '0'}D Ft</div>
+                                        </div>
+                                    </div>
+                                    <div style="margin-top: 10px;">
+                                        <div class="detail-label">QC Notes</div>
+                                        <div class="detail-value" style="font-weight: normal; background: var(--fg-color, #f8fafc); padding: 10px; border-radius: 6px; border: 1px solid var(--border-color, #e2e8f0); margin-top: 4px; font-size: 13px;">${pr.custom_qc_notes || 'No notes added'}</div>
+                                    </div>
+                            `;
+                            if (pr.custom_qc_photo_1 || pr.custom_qc_photo_2) {
+                                html += `
+                                    <div style="margin-top: 12px;">
+                                        <div class="detail-label">QC Photos</div>
+                                        <div class="thumbnail-container">
+                                `;
+                                if (pr.custom_qc_photo_1) {
+                                    html += `<a href="${pr.custom_qc_photo_1}" target="_blank"><img src="${pr.custom_qc_photo_1}" class="thumbnail-img"></a>`;
+                                }
+                                if (pr.custom_qc_photo_2) {
+                                    html += `<a href="${pr.custom_qc_photo_2}" target="_blank"><img src="${pr.custom_qc_photo_2}" class="thumbnail-img"></a>`;
+                                }
+                                html += `</div></div>`;
                             }
-                            if (pr.custom_qc_photo_2) {
-                                html += `<a href="${pr.custom_qc_photo_2}" target="_blank"><img src="${pr.custom_qc_photo_2}" class="thumbnail-img"></a>`;
-                            }
-                            html += `</div></div>`;
-                        }
-                        html += `</div>`;
-                    });
-                } else {
-                    html += `
-                        <div class="detail-section" style="border-style: dashed; opacity: 0.6;">
-                            <div class="detail-title" style="border-bottom: none; margin-bottom: 0; font-style: italic; font-weight: 500; color: var(--text-muted, #64748b);">No Purchase Receipt (QC) recorded yet.</div>
-                        </div>
-                    `;
+                            html += `</div>`;
+                        });
+                    } else {
+                        html += `
+                            <div class="detail-section" style="border-style: dashed; opacity: 0.6;">
+                                <div class="detail-title" style="border-bottom: none; margin-bottom: 0; font-style: italic; font-weight: 500; color: var(--text-muted, #64748b);">No Purchase Receipt (QC) recorded yet.</div>
+                            </div>
+                        `;
+                    }
                 }
 
                 // 4. Asset Capitalizations

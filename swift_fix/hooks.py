@@ -143,8 +143,8 @@ doc_events = {
 		"validate": "swift_fix.setup.mr_utils.validate_mr"
 	},
 	"Request for Quotation": {
-		"validate": "swift_fix.setup.rfq_update.validate_rfq",
-		"on_submit": "swift_fix.setup.rfq_update.on_rfq_submit"
+		"validate": "swift_fix.setup.rfq_utils.validate_rfq",
+		"on_submit": "swift_fix.setup.rfq_utils.on_rfq_submit"
 	},
 	"Purchase Order": {
 		"on_submit": "swift_fix.setup.popr_utils.on_po_submit"
@@ -157,7 +157,9 @@ doc_events = {
 		]
 	},
 	"Asset Capitalization": {
-		"on_submit": "swift_fix.setup.popr_utils.on_asset_capitalization_submit"
+		"validate": "swift_fix.setup.popr_utils.validate_asset_capitalization",
+		"on_submit": "swift_fix.setup.popr_utils.on_asset_capitalization_submit",
+		"on_cancel": "swift_fix.setup.popr_utils.on_asset_capitalization_cancel"
 	},
 	"Asset": {
 		"after_insert": "swift_fix.setup.popr_utils.generate_asset_qr"

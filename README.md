@@ -8,6 +8,8 @@ A premium Computerized Maintenance Management System (CMMS) custom Frappe applic
 
 Swift Fix automates the lifecycle of capital equipment and fixed assets through a custom business flow called **Procurement-based Asset Deployment**. This workflow spans initial procurement intent, vendor quotes and Recce processing, contract terms commitments, receipt serialization, asset generation, and final field deployment (capitalization).
 
+Additionally, Swift Fix supports a **Stock-led Asset Flow (Non-procurement Flow)** to fast-track the creation and deployment of assets using existing warehouse stock without going through the purchasing pipeline.
+
 ### The Procurement-based Asset Deployment Lifecycle
 
 ```mermaid
@@ -64,9 +66,44 @@ flowchart TD
 - **Purchase Invoice Constraint**: Submission of a Purchase Invoice is blocked if the corresponding Purchase Receipt items haven't been capitalized through an `Asset Capitalization` document first.
 - **Capitalization Hook**: Submission of an `Asset Capitalization` document transitions the linked Material Request status to **Asset Capitalised**.
 
+### 7. Stock-led Asset Flow (Non-Procurement)
+- **Simplified Workflow**: Allows creating Fixed Assets directly from regular stocked items (`maintain_stock = 1`, `is_fixed_asset = 0`) via `Asset Capitalization` (consuming items from a specified Warehouse using the `stock_items` child table).
+- **Target Location Validation**: Enforces that a `target_asset_location` is supplied before the capitalization can be saved or submitted.
+- **Automated Lifecycle Hooks**:
+  - Automatically generates a draft **Asset** at the specified location upon saving.
+  - Automatically submits the target Asset when the Asset Capitalization is submitted.
+  - Automatically cancels the target Asset if the Asset Capitalization is cancelled.
+- **Context-Aware Global UI**: The global detail popup widget detects stock-led assets and hides all procurement-specific timeline cards (RFQ, SQ, PO, PR) to focus exclusively on Stock Consumption, Capitalization details, and Asset information.
+
 ---
 
-## 3. Installation
+## 3. Architecture & File Structure
+
+The application's backend architecture is designed around a single, consolidated utility module to maximize code reuse, stability, and maintainability.
+
+```
+swift_fix/
+├── fixtures/
+│   ├── client_script.json   # Client-side scripts for forms (RFQ, SQ, PO, Asset, etc.)
+│   └── custom_field.json    # Custom fields registered for ERPNext/Frappe DocTypes
+├── scratch/
+│   └── update_client_scripts.py # Helper script to patch/update client scripts in database
+└── setup/
+    ├── utils.py             # Single Source of Truth for core procurement/asset utility logic
+    ├── popr_utils.py        # Lifecycle hooks & validations delegate for PO, PR, and AC
+    ├── rfq_utils.py         # RFQ-specific workflows & Recce updates
+    └── mr_utils.py          # Material Request validation & transition rules
+```
+
+### Key Modules:
+* **`setup/utils.py`**: The unified code repository for document-agnostic history generation (`get_asset_html`, `get_historic_flow_details`) and core state verification. All legacy formatting methods have been refactored and consolidated here.
+* **`setup/popr_utils.py`**: Intercepts document events for Purchase Order, Purchase Receipt, Asset Capitalization, and Purchase Invoice. Uses backend helpers from `utils.py`.
+* **`setup/rfq_utils.py`**: Manages RFQ state checks, Supplier Quotation mappings, and Recce updates.
+* **`setup/mr_utils.py`**: Enforces strict validation rules and status updates for Material Requests.
+
+---
+
+## 4. Installation
 
 Install Swift Fix using the [bench](https://github.com/frappe/bench) CLI:
 
@@ -78,7 +115,7 @@ bench --site [your-site-name] install-app swift_fix
 
 ---
 
-## 4. Developer Utilities & Test Execution
+## 5. Developer Utilities & Test Execution
 
 ### Running Automated Integration Tests
 
@@ -87,13 +124,13 @@ Swift Fix includes a comprehensive test suite covering the entire procurement fl
 To run the entire test suite:
 
 ```bash
-bench --site cmms.localhost run-tests --module swift_fix.tests.test_procurement_flow
+bench --site cmms.localhost run-tests --app swift_fix
 ```
 
 To run a specific test step/module individually (e.g. MR or PO):
 
 ```bash
-bench --site cmms.localhost run-tests --module swift_fix.tests.test_procurement_flow --class Test06MR
+bench --site cmms.localhost run-tests --app swift_fix --class Test06MR
 ```
 
 ### Database Migration & Clearing Cache
@@ -115,7 +152,7 @@ bench --site [your-site-name] export-fixtures
 
 ---
 
-## 5. Contributing
+## 6. Contributing
 
 This app uses `pre-commit` for code formatting and linting. Please [install pre-commit](https://pre-commit.com/#installation) and enable it for this repository:
 
@@ -131,6 +168,6 @@ Code quality and formatting checks are governed by:
 
 ---
 
-## 6. License
+## 7. License
 
 This project is licensed under the [MIT License](license.txt).

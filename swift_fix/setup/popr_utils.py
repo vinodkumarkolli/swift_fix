@@ -143,6 +143,32 @@ def on_pr_submit(doc, method):
 		asset_doc.save()
 		generate_asset_qr(asset_doc)
 
+def validate_asset_capitalization(doc, method=None):
+	if not doc.get("target_asset") and doc.get("target_item_code"):
+		is_fixed_asset = frappe.db.get_value("Item", doc.get("target_item_code"), "is_fixed_asset")
+		if is_fixed_asset:
+			if not doc.get("target_asset_location"):
+				frappe.throw(frappe._("Target Asset Location is mandatory for Asset Capitalization."))
+			
+			# Create draft asset
+			asset = frappe.get_doc({
+				"doctype": "Asset",
+				"item_code": doc.get("target_item_code"),
+				"asset_name": doc.get("target_asset_name") or doc.get("target_item_code"),
+				"company": doc.company,
+				"location": doc.get("target_asset_location"),
+				"purchase_date": doc.posting_date or frappe.utils.nowdate(),
+				"available_for_use_date": doc.posting_date or frappe.utils.nowdate(),
+				"asset_type": "Composite Asset",
+				"asset_quantity": 1,
+				"purchase_amount": 0,
+				"net_purchase_amount": 0,
+			})
+			asset.flags.ignore_permissions = True
+			asset.insert()
+			doc.target_asset = asset.name
+			doc.target_asset_name = asset.asset_name
+
 def on_asset_capitalization_submit(doc, method):
 	if doc.target_asset:
 		asset = frappe.get_doc("Asset", doc.target_asset)
@@ -154,6 +180,7 @@ def on_asset_capitalization_submit(doc, method):
 		if asset.docstatus == 0:
 			asset.flags.ignore_permissions = True
 			asset.save()
+			asset.submit()
 
 	if doc.custom_purchase_order:
 		# Find unique linked Material Requests from PO items
@@ -170,6 +197,13 @@ def on_asset_capitalization_submit(doc, method):
 				reason=f"Status updated to Asset Capitalised upon submission of Asset Capitalization {doc.name}",
 				ignore_permissions=True
 			)
+
+def on_asset_capitalization_cancel(doc, method):
+	if doc.target_asset:
+		asset = frappe.get_doc("Asset", doc.target_asset)
+		if asset.docstatus == 1:
+			asset.flags.ignore_permissions = True
+			asset.cancel()
 
 def check_purchase_invoice_capitalization(doc, method=None):
 	for item in doc.items:
@@ -241,299 +275,5 @@ def create_distribution_asset_shortcut(doc, method=None):
 
 @frappe.whitelist()
 def get_procurement_details(asset_name):
-	# Fetch Asset
-	if not frappe.db.exists("Asset", asset_name):
-		return ""
-	
-	asset = frappe.get_doc("Asset", asset_name)
-	
-	# Fetch Purchase Receipt details
-	pr_name = asset.purchase_receipt
-	pr_item_name = asset.purchase_receipt_item
-	
-	if not pr_name:
-		ac_info = frappe.db.get_value(
-			"Asset Capitalization",
-			{"target_asset": asset_name, "docstatus": ["!=", 2]},
-			["name", "custom_purchase_order"],
-			as_dict=True
-		)
-		if ac_info and ac_info.custom_purchase_order:
-			po_name = ac_info.custom_purchase_order
-			pr_item_info = frappe.db.get_value(
-				"Purchase Receipt Item",
-				{"purchase_order": po_name, "item_code": asset.item_code, "docstatus": ["!=", 2]},
-				["parent", "name"],
-				as_dict=True
-			)
-			if pr_item_info:
-				pr_name = pr_item_info.parent
-				pr_item_name = pr_item_info.name
-	
-	pr_doc = None
-	pr_item = None
-	po_name = None
-	po_doc = None
-	mr_name = None
-	mr_doc = None
-	
-	if pr_name:
-		pr_doc = frappe.get_doc("Purchase Receipt", pr_name)
-	if pr_item_name and frappe.db.exists("Purchase Receipt Item", pr_item_name):
-		pr_item = frappe.get_doc("Purchase Receipt Item", pr_item_name)
-		po_name = pr_item.purchase_order
-		mr_name = pr_item.material_request
-		# Fallback 1: Resolve Material Request via Purchase Order Item if not set directly on PR Item
-		if not mr_name and pr_item.purchase_order_item:
-			mr_name = frappe.db.get_value("Purchase Order Item", pr_item.purchase_order_item, "material_request")
-	
-	# Fallback 2: Resolve Material Request via Purchase Order items if po_name is set but mr_name is still missing
-	if po_name and not mr_name:
-		po_items = frappe.get_all(
-			"Purchase Order Item",
-			filters={"parent": po_name, "material_request": ["!=", ""]},
-			fields=["material_request"],
-			limit=1
-		)
-		if po_items:
-			mr_name = po_items[0].material_request
-			
-	if po_name:
-		po_doc = frappe.get_doc("Purchase Order", po_name)
-	if mr_name:
-		mr_doc = frappe.get_doc("Material Request", mr_name)
-	
-	# If none of MR, PO, PR are found, return a clean message
-	if not pr_doc and not po_doc and not mr_doc:
-		return f"""
-			<div class="analysis-container">
-				<div class="no-data">{frappe._("No procurement history found for this Asset.")}</div>
-			</div>
-		"""
-	
-	def get_form_link(doctype, name):
-		return f"/app/{frappe.scrub(doctype).replace('_', '-')}/{name}"
-	
-	# Helper for badge rendering
-	def get_badge_html(docstatus, status=None):
-		if status:
-			lbl = status
-		else:
-			lbl = "Draft" if docstatus == 0 else "Submitted" if docstatus == 1 else "Cancelled"
-			
-		bg = "#f1f5f9"
-		fg = "#475569"
-		if lbl in ["Shortlisted", "Completed", "Active", "Asset Capitalised", "Capitalized"]:
-			bg = "#d1fae5"
-			fg = "#065f46"
-		elif lbl in ["Cancelled", "Closed"]:
-			bg = "#fee2e2"
-			fg = "#991b1b"
-		elif lbl in ["Held"]:
-			bg = "#fef3c7"
-			fg = "#92400e"
-		elif lbl in ["Submitted"]:
-			bg = "#dbeafe"
-			fg = "#1e40af"
-		elif lbl in ["Under Process", "Item Received", "Received"]:
-			bg = "#e0f2fe"
-			fg = "#0369a1"
-		elif lbl in ["Draft"]:
-			bg = "#f1f5f9"
-			fg = "#475569"
-			
-		return f'<span class="badge" style="background-color: {bg}; color: {fg}; padding: 4px 10px; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; display: inline-flex; align-items: center;">{lbl}</span>'
-
-	# Let's generate flow cards
-	mr_html = ""
-	if mr_doc:
-		mr_link = get_form_link("Material Request", mr_doc.name)
-		status_badge = get_badge_html(mr_doc.docstatus, mr_doc.get("custom_processing_status") or mr_doc.status)
-		date_str = frappe.utils.format_date(mr_doc.transaction_date) if mr_doc.transaction_date else "-"
-		mr_html = f"""
-			<div class="summary-card">
-				<div style="font-size: 0.75rem; color: var(--text-muted, #64748b); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">1. Material Request</div>
-				<div style="font-size: 0.95rem; font-weight: 700; margin-bottom: 6px;">
-					<a href="{mr_link}" class="analysis-link">{mr_doc.name}</a>
-				</div>
-				<div style="font-size: 0.85rem; color: var(--text-color, #334155); margin-bottom: 8px;">
-					<strong>{frappe._("Date")}:</strong> {date_str}
-				</div>
-				<div>{status_badge}</div>
-			</div>
-		"""
-	else:
-		mr_html = f"""
-			<div class="summary-card" style="border-style: dashed; opacity: 0.6;">
-				<div style="font-size: 0.75rem; color: var(--text-muted, #64748b); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">1. Material Request</div>
-				<div style="font-size: 0.85rem; color: var(--text-muted, #64748b); font-style: italic;">
-					{frappe._("Not linked to a Material Request")}
-				</div>
-			</div>
-		"""
-
-	po_html = ""
-	if po_doc:
-		po_link = get_form_link("Purchase Order", po_doc.name)
-		status_badge = get_badge_html(po_doc.docstatus, po_doc.status)
-		date_str = frappe.utils.format_date(po_doc.transaction_date) if po_doc.transaction_date else "-"
-		amount_str = frappe.utils.fmt_money(po_doc.grand_total, currency=po_doc.currency)
-		po_html = f"""
-			<div class="summary-card">
-				<div style="font-size: 0.75rem; color: var(--text-muted, #64748b); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">2. Purchase Order</div>
-				<div style="font-size: 0.95rem; font-weight: 700; margin-bottom: 6px;">
-					<a href="{po_link}" class="analysis-link">{po_doc.name}</a>
-				</div>
-				<div style="font-size: 0.85rem; color: var(--text-color, #334155); margin-bottom: 4px;">
-					<strong>{frappe._("Date")}:</strong> {date_str}
-				</div>
-				<div style="font-size: 0.85rem; color: var(--text-color, #334155); margin-bottom: 8px;">
-					<strong>{frappe._("Total")}:</strong> {amount_str}
-				</div>
-				<div>{status_badge}</div>
-			</div>
-		"""
-	else:
-		po_html = f"""
-			<div class="summary-card" style="border-style: dashed; opacity: 0.6;">
-				<div style="font-size: 0.75rem; color: var(--text-muted, #64748b); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">2. Purchase Order</div>
-				<div style="font-size: 0.85rem; color: var(--text-muted, #64748b); font-style: italic;">
-					{frappe._("Not linked to a Purchase Order")}
-				</div>
-			</div>
-		"""
-
-	pr_html = ""
-	if pr_doc:
-		pr_link = get_form_link("Purchase Receipt", pr_doc.name)
-		status_badge = get_badge_html(pr_doc.docstatus, pr_doc.status)
-		date_str = frappe.utils.format_date(pr_doc.posting_date) if pr_doc.posting_date else "-"
-		pr_html = f"""
-			<div class="summary-card">
-				<div style="font-size: 0.75rem; color: var(--text-muted, #64748b); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">3. Purchase Receipt</div>
-				<div style="font-size: 0.95rem; font-weight: 700; margin-bottom: 6px;">
-					<a href="{pr_link}" class="analysis-link">{pr_doc.name}</a>
-				</div>
-				<div style="font-size: 0.85rem; color: var(--text-color, #334155); margin-bottom: 8px;">
-					<strong>{frappe._("Date")}:</strong> {date_str}
-				</div>
-				<div>{status_badge}</div>
-			</div>
-		"""
-	else:
-		pr_html = f"""
-			<div class="summary-card" style="border-style: dashed; opacity: 0.6;">
-				<div style="font-size: 0.75rem; color: var(--text-muted, #64748b); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">3. Purchase Receipt</div>
-				<div style="font-size: 0.85rem; color: var(--text-muted, #64748b); font-style: italic;">
-					{frappe._("Not linked to a Purchase Receipt")}
-				</div>
-			</div>
-		"""
-
-	ac_docs = frappe.get_all(
-		"Asset Capitalization",
-		filters={"target_asset": asset.name, "docstatus": ["!=", 2]},
-		fields=["name", "posting_date", "docstatus"]
-	)
-	ac_html = ""
-	if ac_docs:
-		ac_doc = ac_docs[0]
-		ac_link = get_form_link("Asset Capitalization", ac_doc.name)
-		status_badge = get_badge_html(ac_doc.docstatus, "Capitalized" if ac_doc.docstatus == 1 else "Draft")
-		date_str = frappe.utils.format_date(ac_doc.posting_date) if ac_doc.posting_date else "-"
-		ac_html = f"""
-			<div class="summary-card">
-				<div style="font-size: 0.75rem; color: var(--text-muted, #64748b); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">4. Asset Capitalization</div>
-				<div style="font-size: 0.95rem; font-weight: 700; margin-bottom: 6px;">
-					<a href="{ac_link}" class="analysis-link">{ac_doc.name}</a>
-				</div>
-				<div style="font-size: 0.85rem; color: var(--text-color, #334155); margin-bottom: 8px;">
-					<strong>{frappe._("Date")}:</strong> {date_str}
-				</div>
-				<div>{status_badge}</div>
-			</div>
-		"""
-	else:
-		ac_html = f"""
-			<div class="summary-card" style="border-style: dashed; opacity: 0.6;">
-				<div style="font-size: 0.75rem; color: var(--text-muted, #64748b); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">4. Asset Capitalization</div>
-				<div style="font-size: 0.85rem; color: var(--text-muted, #64748b); font-style: italic;">
-					{frappe._("Not Capitalized yet")}
-				</div>
-			</div>
-		"""
-
-	html = f"""
-		<div class="analysis-container">
-			<style>
-				.analysis-container {{
-					font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-					background-color: var(--card-bg, #ffffff);
-					border: 1px solid var(--border-color, #e2e8f0);
-					border-radius: 12px;
-					padding: 24px;
-					margin-top: 15px;
-					margin-bottom: 30px;
-					box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
-				}}
-				.analysis-header {{
-					display: flex;
-					justify-content: space-between;
-					align-items: center;
-					border-bottom: 2px solid var(--border-color, #e2e8f0);
-					padding-bottom: 16px;
-					margin-bottom: 20px;
-				}}
-				.analysis-title {{
-					font-size: 1.25rem;
-					font-weight: 600;
-					color: var(--text-color, #1e293b);
-					margin: 0;
-				}}
-				.analysis-summary {{
-					display: grid;
-					grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-					gap: 16px;
-					margin-bottom: 24px;
-				}}
-				.summary-card {{
-					background: linear-gradient(135deg, var(--card-bg, #ffffff) 0%, var(--fg-color, #f8fafc) 100%);
-					border: 1px solid var(--border-color, #e2e8f0);
-					border-radius: 12px;
-					padding: 18px;
-					text-align: left;
-					box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
-					transition: transform 0.2s ease, box-shadow 0.2s ease;
-				}}
-				.summary-card:hover {{
-					transform: translateY(-2px);
-					box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-				}}
-				.analysis-link {{
-					color: var(--primary, #1b66ec);
-					font-weight: 600;
-					text-decoration: none;
-					border-bottom: 1px dashed var(--primary, #1b66ec);
-					padding-bottom: 1px;
-					transition: color 0.15s ease;
-				}}
-				.analysis-link:hover {{
-					color: var(--primary-hover, #0843b8);
-					border-bottom-style: solid;
-					text-decoration: none;
-				}}
-			</style>
-			
-			<div class="analysis-header">
-				<h3 class="analysis-title">{frappe._("Asset Procurement Reference Lifecycle")}</h3>
-			</div>
-			
-			<div class="analysis-summary">
-				{mr_html}
-				{po_html}
-				{pr_html}
-				{ac_html}
-			</div>
-		</div>
-	"""
-	return html
+	from swift_fix.setup.utils import get_procurement_details as utils_get_procurement_details
+	return utils_get_procurement_details(asset_name)

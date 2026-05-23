@@ -1,9 +1,5 @@
 import frappe
-
-def clean_val(val):
-    if isinstance(val, str):
-        return val.strip('"').strip("'")
-    return val
+from swift_fix.setup.utils import clean_val
 
 def has_active_po(mr_name):
     # Find all POs linked to this MR

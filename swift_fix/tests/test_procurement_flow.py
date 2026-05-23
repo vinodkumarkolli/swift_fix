@@ -294,9 +294,9 @@ class Test07SQ(ProcurementFlowBase):
 		}, fields=["content"], order_by="creation desc")
 		self.assertTrue(any("A Quotation is requested from Vendor and Recce Process is in Progress" in c.content for c in comments))
 
-		# Test get_linked_mr_html for RFQ
-		from swift_fix.setup.rfq_update import get_linked_mr_html
-		rfq_html = get_linked_mr_html("Request for Quotation", rfq.name)
+		# Test get_asset_html for RFQ
+		from swift_fix.setup.utils import get_asset_html
+		rfq_html = get_asset_html("Request for Quotation", rfq.name)
 		self.assertIn(mr.name, rfq_html)
 		self.assertIn("Shortlisted", rfq_html)
 		self.assertIn(self.location, rfq_html)
@@ -320,8 +320,8 @@ class Test07SQ(ProcurementFlowBase):
 		})
 		sq.insert().submit()
 
-		# Test get_linked_mr_html for Supplier Quotation
-		sq_html = get_linked_mr_html("Supplier Quotation", sq.name)
+		# Test get_asset_html for Supplier Quotation
+		sq_html = get_asset_html("Supplier Quotation", sq.name)
 		self.assertIn(mr.name, sq_html)
 		self.assertIn("Shortlisted", sq_html)
 		self.assertIn(self.location, sq_html)
@@ -381,7 +381,7 @@ class Test08PO(ProcurementFlowBase):
 		self.assertTrue(any(f"Status updated to Under Process upon submission of Purchase Order {po.name}" in c.content for c in comments))
 
 		# Test get_linked_mr_html for Purchase Order
-		from swift_fix.setup.rfq_update import get_linked_mr_html
+		from swift_fix.setup.rfq_utils import get_linked_mr_html
 		po_html = get_linked_mr_html("Purchase Order", po.name)
 		self.assertIn(mr.name, po_html)
 		self.assertIn(self.location, po_html)
@@ -737,9 +737,9 @@ class Test10AssetCapitalization(ProcurementFlowBase):
 		})
 		ac.insert().submit()
 
-		# Manually submit the asset (docstatus -> 1) as required before Purchase Invoice submission
+		# Verify asset is automatically submitted (docstatus = 1) as required before Purchase Invoice submission
 		asset_doc = frappe.get_doc("Asset", asset_name)
-		asset_doc.submit()
+		self.assertEqual(asset_doc.docstatus, 1)
 
 		# Submit purchase invoice (should succeed now because asset capitalization has been submitted)
 		pi_valid = frappe.get_doc({
@@ -865,10 +865,8 @@ class Test11Asset(ProcurementFlowBase):
 		})
 		ac.insert().submit()
 
-		# Verify asset is still in Draft state (docstatus = 0) and can be manually submitted
+		# Verify asset is automatically submitted (docstatus = 1)
 		asset_doc.reload()
-		self.assertEqual(asset_doc.docstatus, 0)
-		asset_doc.submit()
 		self.assertEqual(asset_doc.docstatus, 1)
 
 		# Verify procurement HTML contents
@@ -880,7 +878,7 @@ class Test11Asset(ProcurementFlowBase):
 		self.assertIn(ac.name, html_details)
 
 		# Verify get_mr_flow_details whitelisted method returns all linked details
-		from swift_fix.setup.rfq_update import get_mr_flow_details
+		from swift_fix.setup.rfq_utils import get_mr_flow_details
 		details = get_mr_flow_details(mr.name)
 		self.assertEqual(details["mr_name"], mr.name)
 		self.assertTrue(len(details["mr_items"]) > 0)
@@ -975,7 +973,7 @@ class Test12PermissionChecks(ProcurementFlowBase):
 		try:
 			# Guest user check
 			frappe.set_user("Guest")
-			from swift_fix.setup.rfq_update import rfq_change_recce_status, rfq_update_dimensions, rfq_update_dimensions_with_images
+			from swift_fix.setup.rfq_utils import rfq_change_recce_status, rfq_update_dimensions, rfq_update_dimensions_with_images
 			self.assertRaises(frappe.PermissionError, get_mr_status_details, mr.name)
 			self.assertRaises(frappe.PermissionError, change_mr_status, mr.name, "Cancelled")
 			self.assertRaises(frappe.PermissionError, analyze_mr, mr.name)
@@ -1010,3 +1008,128 @@ class Test12PermissionChecks(ProcurementFlowBase):
 
 		finally:
 			frappe.set_user(original_user)
+
+
+class Test13StockLedAssetFlow(ProcurementFlowBase):
+	def test_non_procurement_stock_led_flow(self):
+		# 1. Create Stock Item if it doesn't exist
+		stock_item_code = "A4STICK"
+		if not frappe.db.exists("Item", stock_item_code):
+			frappe.get_doc({
+				"doctype": "Item",
+				"item_code": stock_item_code,
+				"item_name": "A4 Sticker",
+				"item_group": "Consumable",
+				"stock_uom": "Nos",
+				"is_fixed_asset": 0,
+				"is_stock_item": 1,
+				"maintain_stock": 1,
+				"valuation_method": "FIFO"
+			}).insert(ignore_permissions=True)
+
+		# Make sure the target location is present and we retrieve it
+		self.assertTrue(frappe.db.exists("Location", self.location))
+
+		# Get stock adjustment account or fallback to expense account
+		stock_adj_account = frappe.db.get_value("Company", self.company, "stock_adjustment_account") or self.expense_account
+
+		# 2. Add Stock of stock_item_code via Stock Entry
+		se = frappe.get_doc({
+			"doctype": "Stock Entry",
+			"purpose": "Material Receipt",
+			"stock_entry_type": "Material Receipt",
+			"company": self.company,
+			"posting_date": frappe.utils.nowdate(),
+			"posting_time": frappe.utils.nowtime(),
+			"items": [{
+				"item_code": stock_item_code,
+				"qty": 10,
+				"t_warehouse": self.warehouse,
+				"basic_rate": 10.0,
+				"uom": "Nos",
+				"conversion_factor": 1.0,
+				"cost_center": self.cost_center,
+				"expense_account": stock_adj_account
+			}]
+		})
+		se.insert(ignore_permissions=True)
+		se.submit()
+
+		# Verify Stock Balance exists
+		from erpnext.stock.utils import get_stock_balance
+		bal_qty = get_stock_balance(stock_item_code, self.warehouse)
+		self.assertGreaterEqual(bal_qty, 10)
+
+		# 3. Try to create Asset Capitalization without location - should fail validation
+		ac_invalid = frappe.get_doc({
+			"doctype": "Asset Capitalization",
+			"company": self.company,
+			"posting_date": frappe.utils.nowdate(),
+			"posting_time": frappe.utils.nowtime(),
+			"target_item_code": self.item_code,
+			"target_qty": 1,
+			"stock_items": [{
+				"item_code": stock_item_code,
+				"qty": 5,
+				"stock_uom": "Nos",
+				"uom": "Nos",
+				"conversion_factor": 1.0,
+				"s_warehouse": self.warehouse,
+				"expense_account": self.expense_account,
+				"cost_center": self.cost_center,
+				"amount": 50.0
+			}]
+		})
+		# Target Asset Location is missing, should throw ValidationError
+		self.assertRaises(frappe.ValidationError, ac_invalid.insert)
+
+		# 4. Create and submit Asset Capitalization with location
+		ac_valid = frappe.get_doc({
+			"doctype": "Asset Capitalization",
+			"company": self.company,
+			"posting_date": frappe.utils.nowdate(),
+			"posting_time": frappe.utils.nowtime(),
+			"target_item_code": self.item_code,
+			"target_qty": 1,
+			"target_asset_location": self.location,
+			"stock_items": [{
+				"item_code": stock_item_code,
+				"qty": 5,
+				"stock_uom": "Nos",
+				"uom": "Nos",
+				"conversion_factor": 1.0,
+				"s_warehouse": self.warehouse,
+				"expense_account": self.expense_account,
+				"cost_center": self.cost_center,
+				"amount": 50.0
+			}],
+			"custom_installation_length": 8,
+			"custom_installation_height": 5,
+			"custom_installation_depth": 0.6,
+			"custom_installation_photo_1": "/files/install1.png",
+			"custom_installation_photo_2": "/files/install2.png",
+			"custom_installation_notes": "Stock-led asset installed successfully."
+		})
+		ac_valid.insert(ignore_permissions=True)
+		
+		# Verify that the target asset was automatically created in Draft state
+		self.assertTrue(bool(ac_valid.target_asset))
+		asset_name = ac_valid.target_asset
+		self.assertTrue(frappe.db.exists("Asset", asset_name))
+		
+		asset_doc = frappe.get_doc("Asset", asset_name)
+		self.assertEqual(asset_doc.docstatus, 0)
+		self.assertEqual(asset_doc.location, self.location)
+		self.assertEqual(asset_doc.asset_type, "Composite Asset")
+
+		# Submit the Asset Capitalization
+		ac_valid.submit()
+		
+		# Verify that the target asset was automatically submitted (docstatus = 1)
+		asset_doc.reload()
+		self.assertEqual(asset_doc.docstatus, 1)
+
+		# Verify that cancelling the Asset Capitalization cancels the target asset
+		ac_valid.cancel()
+		asset_doc.reload()
+		self.assertEqual(asset_doc.docstatus, 2)
