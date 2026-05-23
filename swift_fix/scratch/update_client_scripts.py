@@ -244,6 +244,53 @@ function load_material_request_details(frm) {
 setup_global_mr_details_popup();
 """
 
+ASSET_SCRIPT = """frappe.ui.form.on('Asset', {
+    refresh(frm) {
+        load_material_request_details(frm);
+        setup_detail_button_click(frm);
+    }
+});
+
+function setup_detail_button_click(frm) {
+    if (frm.fields_dict.custom_procurement_html) {
+        frm.fields_dict.custom_procurement_html.$wrapper.off('click', '.show-mr-detail').on('click', '.show-mr-detail', function(e) {
+            e.preventDefault();
+            let mr_name = $(this).data('mr');
+            if (mr_name) {
+                window.show_mr_flow_details(mr_name);
+            }
+        });
+    }
+}
+
+function load_material_request_details(frm) {
+    if (frm.is_new()) {
+        frm.set_df_property('custom_procurement_html', 'options', '');
+        frm.refresh_field('custom_procurement_html');
+        return;
+    }
+
+    frappe.call({
+        method: 'swift_fix.setup.rfq_update.get_linked_mr_html',
+        args: {
+            doctype: frm.doc.doctype,
+            docname: frm.doc.name
+        },
+        callback: function(r) {
+            if (r.message) {
+                frm.set_df_property('custom_procurement_html', 'options', r.message);
+            } else {
+                frm.set_df_property('custom_procurement_html', 'options', '');
+            }
+            frm.refresh_field('custom_procurement_html');
+        }
+    });
+}
+
+// Initialize the detail popup function globally if not already set
+setup_global_mr_details_popup();
+"""
+
 GLOBAL_POPUP_JS = """
 function setup_global_mr_details_popup() {
     if (window.show_mr_flow_details) return;
@@ -467,6 +514,38 @@ function setup_global_mr_details_popup() {
                     html += `</tbody></table></div>`;
                 }
 
+                // 2.5 Purchase Orders
+                if (data.pos && data.pos.length) {
+                    html += `
+                        <div class="detail-section">
+                            <div class="detail-title">Purchase Orders</div>
+                            <table class="popup-table">
+                                <thead>
+                                    <tr>
+                                        <th>Purchase Order</th>
+                                        <th>Date</th>
+                                        <th>Status</th>
+                                        <th style="text-align: right;">Rate</th>
+                                        <th style="text-align: right;">Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                    `;
+                    data.pos.forEach(po => {
+                        let link = frappe.utils.get_form_link('Purchase Order', po.name);
+                        html += `
+                            <tr>
+                                <td><a href="${link}" target="_blank" style="color: var(--primary, #1b66ec); font-weight: 700; text-decoration: underline;">${po.name}</a></td>
+                                <td>${po.date || '-'}</td>
+                                <td><span class="badge" style="background-color: #f1f5f9; color: #475569; padding: 4px 10px; border-radius: 9999px;">${po.status}</span></td>
+                                <td style="text-align: right; font-weight: 700; color: var(--text-color, #1e293b);">${frappe.format(po.rate, {fieldtype: 'Currency'})}</td>
+                                <td style="text-align: right; font-weight: 700; color: var(--primary, #1b66ec);">${frappe.format(po.grand_total, {fieldtype: 'Currency'})}</td>
+                            </tr>
+                        `;
+                    });
+                    html += `</tbody></table></div>`;
+                }
+
                 // 3. Purchase Receipts
                 if (data.prs && data.prs.length) {
                     data.prs.forEach(pr => {
@@ -527,9 +606,31 @@ function setup_global_mr_details_popup() {
                                         <div class="detail-label">Posting Date</div>
                                         <div class="detail-value">${ac.posting_date || '-'}</div>
                                     </div>
+                                    <div class="detail-item">
+                                        <div class="detail-label">Installation Dimensions</div>
+                                        <div class="detail-value">${ac.custom_installation_length || '0'}L x ${ac.custom_installation_height || '0'}H x ${ac.custom_installation_depth || '0'}D Ft</div>
+                                    </div>
                                 </div>
-                            </div>
+                                <div style="margin-top: 10px;">
+                                    <div class="detail-label">Installation Notes</div>
+                                    <div class="detail-value" style="font-weight: normal; background: var(--fg-color, #f8fafc); padding: 10px; border-radius: 6px; border: 1px solid var(--border-color, #e2e8f0); margin-top: 4px; font-size: 13px;">${ac.custom_installation_notes || 'No installation notes added'}</div>
+                                </div>
                         `;
+                        if (ac.custom_installation_photo_1 || ac.custom_installation_photo_2) {
+                            html += `
+                                <div style="margin-top: 12px;">
+                                    <div class="detail-label">Installation Photos</div>
+                                    <div class="thumbnail-container">
+                            `;
+                            if (ac.custom_installation_photo_1) {
+                                html += `<a href="${ac.custom_installation_photo_1}" target="_blank"><img src="${ac.custom_installation_photo_1}" class="thumbnail-img"></a>`;
+                            }
+                            if (ac.custom_installation_photo_2) {
+                                html += `<a href="${ac.custom_installation_photo_2}" target="_blank"><img src="${ac.custom_installation_photo_2}" class="thumbnail-img"></a>`;
+                            }
+                            html += `</div></div>`;
+                        }
+                        html += `</div>`;
                     });
                 }
 
@@ -594,6 +695,21 @@ def update_client_scripts():
     po_cs.script = PO_SCRIPT + "\n" + GLOBAL_POPUP_JS
     po_cs.save(ignore_permissions=True)
     print("Updated Purchase Order MR Details Client Script")
+    
+    # 4. Create or update Asset client script
+    if frappe.db.exists("Client Script", "Asset Procurement HTML"):
+        asset_cs = frappe.get_doc("Client Script", "Asset Procurement HTML")
+    else:
+        asset_cs = frappe.new_doc("Client Script")
+        asset_cs.name = "Asset Procurement HTML"
+        asset_cs.dt = "Asset"
+        asset_cs.view = "Form"
+        asset_cs.enabled = 1
+        asset_cs.module = "Swift Fix"
+        
+    asset_cs.script = ASSET_SCRIPT + "\n" + GLOBAL_POPUP_JS
+    asset_cs.save(ignore_permissions=True)
+    print("Updated Asset Procurement HTML Client Script")
     
     frappe.db.commit()
 

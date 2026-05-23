@@ -122,13 +122,36 @@ def get_linked_mr_html(doctype, docname):
     doc = frappe.get_doc(doctype, docname)
     mrs = []
     
-    for item in doc.get("items", []):
+    if doctype == "Asset":
+        mr_name = None
+        if doc.purchase_receipt_item:
+            mr_name = frappe.db.get_value("Purchase Receipt Item", doc.purchase_receipt_item, "material_request")
+        if not mr_name:
+            ac_info = frappe.db.get_value(
+                "Asset Capitalization",
+                {"target_asset": docname, "docstatus": ["!=", 2]},
+                ["name", "custom_purchase_order"],
+                as_dict=True
+            )
+            if ac_info and ac_info.custom_purchase_order:
+                po_items = frappe.get_all(
+                    "Purchase Order Item",
+                    filters={"parent": ac_info.custom_purchase_order, "material_request": ["!=", ""]},
+                    fields=["material_request"],
+                    limit=1
+                )
+                if po_items:
+                    mr_name = po_items[0].material_request
+        if mr_name:
+            mrs.append(mr_name)
+    
+    for item in (doc.get("items") or []):
         if item.get("material_request"):
             mrs.append(item.material_request)
             
     if not mrs and doctype == "Supplier Quotation":
         rfq_names = set()
-        for item in doc.get("items", []):
+        for item in (doc.get("items") or []):
             if item.get("request_for_quotation"):
                 rfq_names.add(item.request_for_quotation)
         for rfq_name in rfq_names:
@@ -298,6 +321,7 @@ def get_mr_flow_details(mr_name):
         "mr_items": [],
         "rfq": None,
         "sqs": [],
+        "pos": [],
         "prs": [],
         "capitalizations": [],
         "assets": []
@@ -382,6 +406,32 @@ def get_mr_flow_details(mr_name):
                 })
         details["sqs"] = sqs
 
+    # 2.5 Fetch PO details
+    po_items = frappe.get_all(
+        "Purchase Order Item",
+        filters={"material_request": mr_name},
+        fields=["parent", "rate", "item_code"]
+    )
+    if po_items:
+        po_parents = list(set(d.parent for d in po_items))
+        po_parent_details = {}
+        for parent in po_parents:
+            po_parent_details[parent] = frappe.db.get_value("Purchase Order", parent, ["status", "grand_total", "transaction_date"], as_dict=True)
+            
+        pos = []
+        for d in po_items:
+            parent_info = po_parent_details.get(d.parent)
+            if parent_info:
+                pos.append({
+                    "name": d.parent,
+                    "status": parent_info.status,
+                    "date": frappe.utils.format_date(parent_info.transaction_date) if parent_info.transaction_date else None,
+                    "rate": d.rate,
+                    "grand_total": parent_info.grand_total,
+                    "item_code": d.item_code
+                })
+        details["pos"] = pos
+
     # 3. Fetch PR & QC
     pr_items = frappe.get_all(
         "Purchase Receipt Item",
@@ -434,7 +484,12 @@ def get_mr_flow_details(mr_name):
         ac_docs = frappe.get_all(
             "Asset Capitalization",
             filters={"custom_purchase_order": ["in", po_names], "docstatus": ["!=", 2]},
-            fields=["name", "posting_date", "docstatus", "target_asset"]
+            fields=[
+                "name", "posting_date", "docstatus", "target_asset",
+                "custom_installation_notes", "custom_installation_photo_1",
+                "custom_installation_photo_2", "custom_installation_length",
+                "custom_installation_height", "custom_installation_depth"
+            ]
         )
         for ac in ac_docs:
             if ac.target_asset:
@@ -442,7 +497,13 @@ def get_mr_flow_details(mr_name):
             capitalizations.append({
                 "name": ac.name,
                 "posting_date": frappe.utils.format_date(ac.posting_date) if ac.posting_date else None,
-                "status": "Capitalized" if ac.docstatus == 1 else "Draft"
+                "status": "Capitalized" if ac.docstatus == 1 else "Draft",
+                "custom_installation_notes": ac.custom_installation_notes,
+                "custom_installation_photo_1": ac.custom_installation_photo_1,
+                "custom_installation_photo_2": ac.custom_installation_photo_2,
+                "custom_installation_length": ac.custom_installation_length,
+                "custom_installation_height": ac.custom_installation_height,
+                "custom_installation_depth": ac.custom_installation_depth
             })
     details["capitalizations"] = capitalizations
 
