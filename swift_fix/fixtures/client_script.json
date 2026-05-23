@@ -26,7 +26,7 @@
   "doctype": "Client Script",
   "dt": "Purchase Receipt",
   "enabled": 1,
-  "modified": "2026-05-23 12:20:00.000000",
+  "modified": "2026-05-23 12:20:00",
   "module": "Swift Fix",
   "name": "Purchase Receipt QC Validation",
   "script": "frappe.ui.form.on('Purchase Receipt', {\n    validate(frm) {\n        if (!frm.doc.custom_qc_length || !frm.doc.custom_qc_height || !frm.doc.custom_qc_depth) {\n            frappe.throw(__('QC Dimensions are mandatory'));\n        }\n        if (!frm.doc.custom_qc_photo_1 || !frm.doc.custom_qc_photo_2) {\n            frappe.throw(__('QC Photos are mandatory'));\n        }\n        if (!frm.doc.custom_qc_notes || !frm.doc.custom_qc_notes.trim()) {\n            frappe.throw(__('QC Notes are mandatory'));\n        }\n    }\n});",

@@ -139,6 +139,8 @@ def on_pr_submit(doc, method):
 	assets = frappe.get_all("Asset", filters={"purchase_receipt": doc.name})
 	for asset in assets:
 		asset_doc = frappe.get_doc("Asset", asset.name)
+		asset_doc.asset_type = "Composite Asset"
+		asset_doc.save()
 		generate_asset_qr(asset_doc)
 
 def on_asset_capitalization_submit(doc, method):

@@ -284,5 +284,5 @@ fixtures = [
     # {"doctype": "Custom DocPerm"}
 ]
 
-after_install = "swift_fix.setup.install.after_install"
-after_migrate = "swift_fix.setup.install.after_migrate"
+# after_install = "swift_fix.setup.install.after_install"
+# after_migrate = "swift_fix.setup.install.after_migrate"
