@@ -151,12 +151,18 @@ def get_linked_mr_html(doctype, docname):
         
     html_cards = []
     for mr_name in unique_mrs:
-        mr_doc = frappe.db.get_value("Material Request", mr_name, ["custom_processing_status", "transaction_date"], as_dict=True)
+        mr_doc = frappe.db.get_value("Material Request", mr_name, ["custom_processing_status", "transaction_date", "custom_location"], as_dict=True)
         if not mr_doc:
             continue
             
         status = mr_doc.custom_processing_status or "Submitted"
         tx_date = mr_doc.transaction_date
+        location = mr_doc.custom_location or "Not Specified"
+        if location and location != "Not Specified":
+            loc_link = frappe.utils.get_url_to_form('Location', location)
+            location_html = f'<a href="{loc_link}" style="color: var(--primary, #1b66ec); font-weight: 600; text-decoration: none; border-bottom: 1px dashed var(--primary, #1b66ec); padding-bottom: 1px; transition: color 0.15s ease;">{location}</a>'
+        else:
+            location_html = '<span style="font-weight: 600;">Not Specified</span>'
         
         badge_bg = '#f1f5f9'
         badge_color = '#475569'
@@ -217,6 +223,7 @@ def get_linked_mr_html(doctype, docname):
                         <a href="{mr_link}" style="color: var(--primary, #1b66ec); text-decoration: none; border-bottom: 1px dashed var(--primary, #1b66ec); padding-bottom: 1px; transition: color 0.15s ease;">{mr_name}</a>
                     </div>
                     <div style="font-size: 12px; color: var(--text-muted, #64748b);">Date: {formatted_date}</div>
+                    <div style="font-size: 12px; color: var(--text-muted, #64748b);">Location: {location_html}</div>
                 </div>
             </div>
             <div style="text-align: right;">
@@ -238,7 +245,7 @@ def get_linked_mr_html(doctype, docname):
         
     container_html = f"""
     <div class="mr-cards-container" style="
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, sans-serif;
         display: flex;
         flex-direction: row;
         flex-wrap: wrap;

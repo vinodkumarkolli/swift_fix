@@ -299,6 +299,9 @@ class Test07SQ(ProcurementFlowBase):
 		rfq_html = get_linked_mr_html("Request for Quotation", rfq.name)
 		self.assertIn(mr.name, rfq_html)
 		self.assertIn("Shortlisted", rfq_html)
+		self.assertIn(self.location, rfq_html)
+		self.assertIn("Location", rfq_html)
+		self.assertIn("/location/", rfq_html.lower())
 
 		# Create Supplier Quotation linked to RFQ
 		sq = frappe.get_doc({
@@ -321,6 +324,9 @@ class Test07SQ(ProcurementFlowBase):
 		sq_html = get_linked_mr_html("Supplier Quotation", sq.name)
 		self.assertIn(mr.name, sq_html)
 		self.assertIn("Shortlisted", sq_html)
+		self.assertIn(self.location, sq_html)
+		self.assertIn("Location", sq_html)
+		self.assertIn("/location/", sq_html.lower())
 
 
 class Test08PO(ProcurementFlowBase):
