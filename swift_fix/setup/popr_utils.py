@@ -251,6 +251,25 @@ def get_procurement_details(asset_name):
 	pr_name = asset.purchase_receipt
 	pr_item_name = asset.purchase_receipt_item
 	
+	if not pr_name:
+		ac_info = frappe.db.get_value(
+			"Asset Capitalization",
+			{"target_asset": asset_name, "docstatus": ["!=", 2]},
+			["name", "custom_purchase_order"],
+			as_dict=True
+		)
+		if ac_info and ac_info.custom_purchase_order:
+			po_name = ac_info.custom_purchase_order
+			pr_item_info = frappe.db.get_value(
+				"Purchase Receipt Item",
+				{"purchase_order": po_name, "item_code": asset.item_code, "docstatus": ["!=", 2]},
+				["parent", "name"],
+				as_dict=True
+			)
+			if pr_item_info:
+				pr_name = pr_item_info.parent
+				pr_item_name = pr_item_info.name
+	
 	pr_doc = None
 	pr_item = None
 	po_name = None

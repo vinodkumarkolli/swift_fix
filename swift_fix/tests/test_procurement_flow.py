@@ -879,6 +879,21 @@ class Test11Asset(ProcurementFlowBase):
 		self.assertIn(pr.name, html_details)
 		self.assertIn(ac.name, html_details)
 
+		# Verify get_mr_flow_details whitelisted method returns all linked details
+		from swift_fix.setup.rfq_update import get_mr_flow_details
+		details = get_mr_flow_details(mr.name)
+		self.assertEqual(details["mr_name"], mr.name)
+		self.assertTrue(len(details["mr_items"]) > 0)
+		self.assertEqual(details["mr_items"][0]["item_code"], self.item_code)
+		self.assertEqual(details["mr_items"][0]["custom_request_description"], "Test description")
+		self.assertTrue(len(details["prs"]) > 0)
+		self.assertEqual(details["prs"][0]["name"], pr.name)
+		self.assertEqual(details["prs"][0]["custom_qc_notes"], "All items inspected and cleared.")
+		self.assertTrue(len(details["assets"]) > 0)
+		self.assertEqual(details["assets"][0]["name"], asset_name)
+		self.assertTrue(len(details["capitalizations"]) > 0)
+		self.assertEqual(details["capitalizations"][0]["name"], ac.name)
+
 
 class Test12PermissionChecks(ProcurementFlowBase):
 	def test_permission_checks(self):

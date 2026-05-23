@@ -226,18 +226,21 @@ def get_linked_mr_html(doctype, docname):
                     <div style="font-size: 12px; color: var(--text-muted, #64748b);">Location: {location_html}</div>
                 </div>
             </div>
-            <div style="text-align: right;">
-                <div style="font-size: 11px; color: var(--text-muted, #64748b); font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Status</div>
-                <span class="badge" style="
-                    display: inline-flex;
-                    align-items: center;
-                    padding: 6px 12px;
-                    border-radius: 9999px;
-                    font-size: 12px;
-                    font-weight: 600;
-                    background-color: {badge_bg};
-                    color: {badge_color};
-                ">{status}</span>
+            <div style="text-align: right; display: flex; flex-direction: column; align-items: flex-end; justify-content: center; gap: 8px;">
+                <div>
+                    <div style="font-size: 11px; color: var(--text-muted, #64748b); font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Status</div>
+                    <span class="badge" style="
+                        display: inline-flex;
+                        align-items: center;
+                        padding: 6px 12px;
+                        border-radius: 9999px;
+                        font-size: 12px;
+                        font-weight: 600;
+                        background-color: {badge_bg};
+                        color: {badge_color};
+                    ">{status}</span>
+                </div>
+                <button class="btn btn-xs btn-default show-mr-detail" data-mr="{mr_name}" style="font-size: 11px; padding: 3px 8px; font-weight: 500;">Detail</button>
             </div>
         </div>
         """
@@ -286,3 +289,177 @@ def on_rfq_submit(doc, method):
     for mr_name in unique_mrs:
         mr = frappe.get_doc("Material Request", mr_name)
         mr.add_comment("Comment", text="A Quotation is requested from Vendor and Recce Process is in Progress")
+
+@frappe.whitelist()
+def get_mr_flow_details(mr_name):
+    mr_name = clean_val(mr_name)
+    details = {
+        "mr_name": mr_name,
+        "mr_items": [],
+        "rfq": None,
+        "sqs": [],
+        "prs": [],
+        "capitalizations": [],
+        "assets": []
+    }
+
+    # Fetch MR Items details
+    details["mr_items"] = frappe.get_all(
+        "Material Request Item",
+        filters={"parent": mr_name},
+        fields=["item_code", "item_name", "custom_request_description"]
+    )
+
+    # 1. Fetch RFQ
+    rfq_items = frappe.get_all(
+        "Request for Quotation Item",
+        filters={"material_request": mr_name},
+        fields=["parent"]
+    )
+    if rfq_items:
+        rfq_names = list(set(d.parent for d in rfq_items))
+        rfqs = []
+        for rfq_name in rfq_names:
+            rfq_doc = frappe.get_doc("Request for Quotation", rfq_name)
+            rfqs.append({
+                "name": rfq_doc.name,
+                "status": rfq_doc.status,
+                "custom_recce_status": rfq_doc.custom_recce_status,
+                "custom_recce_length": rfq_doc.custom_recce_length,
+                "custom_recce_height": rfq_doc.custom_recce_height,
+                "custom_recce_depth": rfq_doc.custom_recce_depth,
+                "custom_recce_photo_1": rfq_doc.custom_recce_photo_1,
+                "custom_recce_photo_2": rfq_doc.custom_recce_photo_2,
+                "custom_recced_timestamp": frappe.utils.format_datetime(rfq_doc.custom_recced_timestamp) if rfq_doc.custom_recced_timestamp else None
+            })
+        details["rfq"] = rfqs
+
+    # 2. Fetch SQ details
+    sq_items = frappe.get_all(
+        "Supplier Quotation Item",
+        filters={"material_request": mr_name},
+        fields=["parent", "rate", "item_code"]
+    )
+    # Fallback to fetching via RFQ if direct MR link is empty
+    rfq_items_for_fallback = frappe.get_all(
+        "Request for Quotation Item",
+        filters={"material_request": mr_name},
+        fields=["parent", "item_code"]
+    )
+    if rfq_items_for_fallback:
+        rfq_names = list(set(d.parent for d in rfq_items_for_fallback))
+        item_codes = list(set(d.item_code for d in rfq_items_for_fallback))
+        sq_items_via_rfq = frappe.get_all(
+            "Supplier Quotation Item",
+            filters={
+                "request_for_quotation": ["in", rfq_names],
+                "item_code": ["in", item_codes],
+                "docstatus": ["<", 2]
+            },
+            fields=["parent", "rate", "item_code"]
+        )
+        existing_keys = set((d.parent, d.item_code) for d in sq_items)
+        for d in sq_items_via_rfq:
+            if (d.parent, d.item_code) not in existing_keys:
+                sq_items.append(d)
+    if sq_items:
+        sq_parents = list(set(d.parent for d in sq_items))
+        sq_parent_details = {}
+        for parent in sq_parents:
+            sq_parent_details[parent] = frappe.db.get_value("Supplier Quotation", parent, ["supplier", "status", "grand_total"], as_dict=True)
+
+        sqs = []
+        for d in sq_items:
+            parent_info = sq_parent_details.get(d.parent)
+            if parent_info:
+                sqs.append({
+                    "name": d.parent,
+                    "supplier": parent_info.supplier,
+                    "status": parent_info.status,
+                    "rate": d.rate,
+                    "grand_total": parent_info.grand_total,
+                    "item_code": d.item_code
+                })
+        details["sqs"] = sqs
+
+    # 3. Fetch PR & QC
+    pr_items = frappe.get_all(
+        "Purchase Receipt Item",
+        filters={"material_request": mr_name},
+        fields=["name", "parent"]
+    )
+    if not pr_items:
+        po_items = frappe.get_all("Purchase Order Item", filters={"material_request": mr_name}, fields=["name"])
+        po_item_names = [d.name for d in po_items]
+        if po_item_names:
+            pr_items = frappe.get_all(
+                "Purchase Receipt Item",
+                filters={"purchase_order_item": ["in", po_item_names]},
+                fields=["name", "parent"]
+            )
+            
+    if pr_items:
+        pr_names = list(set(d.parent for d in pr_items))
+        prs = []
+        for pr_name in pr_names:
+            pr_doc = frappe.get_doc("Purchase Receipt", pr_name)
+            prs.append({
+                "name": pr_doc.name,
+                "status": pr_doc.status,
+                "custom_qc_length": pr_doc.custom_qc_length,
+                "custom_qc_height": pr_doc.custom_qc_height,
+                "custom_qc_depth": pr_doc.custom_qc_depth,
+                "custom_qc_photo_1": pr_doc.custom_qc_photo_1,
+                "custom_qc_photo_2": pr_doc.custom_qc_photo_2,
+                "custom_qc_notes": pr_doc.custom_qc_notes
+            })
+        details["prs"] = prs
+
+    # 4. Fetch Assets and 5. Fetch Asset Capitalizations
+    pr_item_names = [d.name for d in pr_items] if pr_items else []
+    
+    # Get POs linked to this MR
+    po_items = frappe.get_all(
+        "Purchase Order Item",
+        filters={"material_request": mr_name},
+        fields=["parent"]
+    )
+    po_names = list(set(d.parent for d in po_items))
+
+    # Find target assets from Asset Capitalizations linked to these POs
+    ac_target_assets = []
+    capitalizations = []
+    ac_docs = []
+    if po_names:
+        ac_docs = frappe.get_all(
+            "Asset Capitalization",
+            filters={"custom_purchase_order": ["in", po_names], "docstatus": ["!=", 2]},
+            fields=["name", "posting_date", "docstatus", "target_asset"]
+        )
+        for ac in ac_docs:
+            if ac.target_asset:
+                ac_target_assets.append(ac.target_asset)
+            capitalizations.append({
+                "name": ac.name,
+                "posting_date": frappe.utils.format_date(ac.posting_date) if ac.posting_date else None,
+                "status": "Capitalized" if ac.docstatus == 1 else "Draft"
+            })
+    details["capitalizations"] = capitalizations
+
+    # Fetch Assets
+    assets = []
+    or_filters = []
+    if pr_item_names:
+        or_filters.append(["purchase_receipt_item", "in", pr_item_names])
+    if ac_target_assets:
+        or_filters.append(["name", "in", ac_target_assets])
+
+    if or_filters:
+        assets = frappe.get_all(
+            "Asset",
+            or_filters=or_filters,
+            fields=["name", "asset_name", "status"]
+        )
+    details["assets"] = assets
+
+    return details
