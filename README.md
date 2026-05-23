@@ -20,7 +20,7 @@ flowchart TD
 
     subgraph Receipt & Serialization
         PO --> PR[Purchase Receipt<br><i>Completion of Mfg</i>]
-        PR -->|Simultaneous Creation<br>PO Reference| Asset[Asset<br><b>Completion of Procurement</b>]
+        PR -->|Simultaneous Creation<br>PR/Item Link| Asset[Asset<br><b>Completion of Procurement</b>]
     end
 
     subgraph Deployment
@@ -42,9 +42,10 @@ flowchart TD
 - **Button Hiding Rules**: Standard "Purchase Order" and "Supplier Quotation" buttons are hidden on the MR form to prevent direct creation bypassing the RFQ stage.
 - **Status Banner**: Displays the custom processing status (`Draft`, `Shortlisted`, `Under Process`, `Item Received`, `Asset Capitalised`, `Cancelled`, `Held`) dynamically in the UI without modifying the document state.
 
-### 2. Request for Quotation (RFQ)
-- **Pre-requisite Validation**: An RFQ can only be created and submitted if the linked Material Request's status is **Shortlisted**.
-- **Timeline Commenting**: Automatically logs a comment on the linked MR timeline: *"A Quotation is requested from Vendor and Recce Process is in Progress"*.
+### 2. Request for Quotation (RFQ) & Supplier Quotation (SQ)
+- **Pre-requisite Validation**: An RFQ can only be saved and submitted if all unique linked Material Requests (referenced in the `items` child table) have a custom processing status of **Shortlisted**.
+- **Dynamic HTML Banner**: Displays linked Material Request details dynamically in a premium HTML field (`custom_mr_html`) on both RFQ and SQ forms, supporting multiple MR cards if needed.
+- **Timeline Commenting**: Automatically logs a comment on all unique linked MR timelines: *"A Quotation is requested from Vendor and Recce Process is in Progress"*.
 
 ### 3. Purchase Order (PO)
 - **Under Process Transition**: Submission of the PO automatically transitions the linked Material Request status to **Under Process** (unless Purchase Receipts or Assets already exist for it).
@@ -52,7 +53,8 @@ flowchart TD
 
 ### 4. Purchase Receipt (PR) & Asset Generation
 - **Automatic Serialization**: Submission of a Purchase Receipt automatically generates a unique serial number (`[Item Code]-[Hash]`) for the item and updates the row.
-- **Simultaneous Asset Creation**: Automatically generates and saves the corresponding **Asset** linked to the same Purchase Order.
+- **Simultaneous Asset Creation**: Automatically generates and saves the corresponding **Asset** linked to the Purchase Receipt.
+- **Procurement Details View**: Displays the linked Material Request, Purchase Order, Purchase Receipt, and Asset Capitalization details dynamically in a premium HTML field (`custom_procurement_html`) on the Asset form.
 - **Completion Hook**: Completes the Purchase Order status and transitions the linked Material Request status to **Item Received**.
 
 ### 5. Asset QR Code Generation
@@ -82,10 +84,16 @@ bench --site [your-site-name] install-app swift_fix
 
 Swift Fix includes a comprehensive test suite covering the entire procurement flow, security and permissions checks, status transitions, and data validations.
 
-To run the tests:
+To run the entire test suite:
 
 ```bash
-bench --site [your-site-name] run-tests --module swift_fix.tests.test_procurement_flow
+bench --site cmms.localhost run-tests --module swift_fix.tests.test_procurement_flow
+```
+
+To run a specific test step/module individually (e.g. MR or PO):
+
+```bash
+bench --site cmms.localhost run-tests --module swift_fix.tests.test_procurement_flow --class Test06MR
 ```
 
 ### Database Migration & Clearing Cache

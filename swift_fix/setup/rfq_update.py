@@ -117,19 +117,165 @@ def rfq_update_dimensions_with_images(doc, user, length, height, depth, image1_u
     else:
         frappe.throw("Invalid state")
 
-def validate_rfq(doc, method):
-    if not doc.custom_request_details:
-        frappe.throw(frappe._("Please link a Material Request (Request Details) first."))
+@frappe.whitelist()
+def get_linked_mr_html(doctype, docname):
+    doc = frappe.get_doc(doctype, docname)
+    mrs = []
     
-    mr_status = frappe.db.get_value("Material Request", doc.custom_request_details, "custom_processing_status")
-    if mr_status != "Shortlisted":
-        frappe.throw(
-            frappe._("Request for Quotation cannot be saved. The linked Material Request {0} must be in 'Shortlisted' status (current status: {1}).").format(
-                doc.custom_request_details, mr_status or "None"
+    for item in doc.get("items", []):
+        if item.get("material_request"):
+            mrs.append(item.material_request)
+            
+    if not mrs and doctype == "Supplier Quotation":
+        rfq_names = set()
+        for item in doc.get("items", []):
+            if item.get("request_for_quotation"):
+                rfq_names.add(item.request_for_quotation)
+        for rfq_name in rfq_names:
+            rfq_items = frappe.get_all(
+                "Request for Quotation Item",
+                filters={"parent": rfq_name},
+                fields=["material_request"]
             )
-        )
+            for rfq_item in rfq_items:
+                if rfq_item.material_request:
+                    mrs.append(rfq_item.material_request)
+                    
+    unique_mrs = []
+    for mr in mrs:
+        if mr and mr not in unique_mrs:
+            unique_mrs.append(mr)
+            
+    if not unique_mrs:
+        return ""
+        
+    html_cards = []
+    for mr_name in unique_mrs:
+        mr_doc = frappe.db.get_value("Material Request", mr_name, ["custom_processing_status", "transaction_date"], as_dict=True)
+        if not mr_doc:
+            continue
+            
+        status = mr_doc.custom_processing_status or "Submitted"
+        tx_date = mr_doc.transaction_date
+        
+        badge_bg = '#f1f5f9'
+        badge_color = '#475569'
+        
+        if status == 'Shortlisted':
+            badge_bg = '#d1fae5'
+            badge_color = '#065f46'
+        elif status == 'Cancelled':
+            badge_bg = '#fee2e2'
+            badge_color = '#991b1b'
+        elif status == 'Held':
+            badge_bg = '#fef3c7'
+            badge_color = '#92400e'
+        elif status in ['Submitted', 'Draft']:
+            badge_bg = '#dbeafe'
+            badge_color = '#1e40af'
+        elif status in ['Under Process', 'Item Received']:
+            badge_bg = '#e0f2fe'
+            badge_color = '#0369a1'
+        elif status == 'Asset Capitalised':
+            badge_bg = '#f3e8ff'
+            badge_color = '#6b21a8'
+            
+        mr_link = frappe.utils.get_url_to_form('Material Request', mr_name)
+        formatted_date = frappe.utils.format_date(tx_date) if tx_date else "-"
+        
+        card = f"""
+        <div class="mr-status-card" style="
+            flex: 1 1 calc(50% - 16px);
+            min-width: 280px;
+            background: linear-gradient(135deg, var(--card-bg, #ffffff) 0%, var(--fg-color, #f8fafc) 100%);
+            border: 1px solid var(--border-color, #e2e8f0);
+            border-radius: 12px;
+            padding: 16px 20px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        ">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="
+                    background-color: var(--primary-light, #e0f2fe);
+                    color: var(--primary, #1b66ec);
+                    width: 40px;
+                    height: 40px;
+                    border-radius: 8px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 18px;
+                ">
+                    <i class="fa fa-file-text-o"></i>
+                </div>
+                <div>
+                    <div style="font-size: 11px; color: var(--text-muted, #64748b); font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">Linked Material Request</div>
+                    <div style="font-size: 15px; font-weight: 600; margin-bottom: 2px;">
+                        <a href="{mr_link}" style="color: var(--primary, #1b66ec); text-decoration: none; border-bottom: 1px dashed var(--primary, #1b66ec); padding-bottom: 1px; transition: color 0.15s ease;">{mr_name}</a>
+                    </div>
+                    <div style="font-size: 12px; color: var(--text-muted, #64748b);">Date: {formatted_date}</div>
+                </div>
+            </div>
+            <div style="text-align: right;">
+                <div style="font-size: 11px; color: var(--text-muted, #64748b); font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Status</div>
+                <span class="badge" style="
+                    display: inline-flex;
+                    align-items: center;
+                    padding: 6px 12px;
+                    border-radius: 9999px;
+                    font-size: 12px;
+                    font-weight: 600;
+                    background-color: {badge_bg};
+                    color: {badge_color};
+                ">{status}</span>
+            </div>
+        </div>
+        """
+        html_cards.append(card)
+        
+    container_html = f"""
+    <div class="mr-cards-container" style="
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        display: flex;
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 16px;
+        margin-top: 10px;
+        margin-bottom: 20px;
+        width: 100%;
+    ">
+        {"".join(html_cards)}
+    </div>
+    """
+    return container_html
+
+def validate_rfq(doc, method):
+    unique_mrs = []
+    for item in doc.get("items", []):
+        if item.get("material_request") and item.material_request not in unique_mrs:
+            unique_mrs.append(item.material_request)
+            
+    if not unique_mrs:
+        frappe.throw(frappe._("Please link at least one Material Request in the items table."))
+        
+    for mr_name in unique_mrs:
+        mr_status = frappe.db.get_value("Material Request", mr_name, "custom_processing_status")
+        if mr_status != "Shortlisted":
+            frappe.throw(
+                frappe._("Request for Quotation cannot be saved. The linked Material Request {0} must be in 'Shortlisted' status (current status: {1}).").format(
+                    mr_name, mr_status or "None"
+                )
+            )
 
 def on_rfq_submit(doc, method):
-    if doc.custom_request_details:
-        mr = frappe.get_doc("Material Request", doc.custom_request_details)
+    unique_mrs = []
+    for item in doc.get("items", []):
+        if item.get("material_request") and item.material_request not in unique_mrs:
+            unique_mrs.append(item.material_request)
+            
+    for mr_name in unique_mrs:
+        mr = frappe.get_doc("Material Request", mr_name)
         mr.add_comment("Comment", text="A Quotation is requested from Vendor and Recce Process is in Progress")
