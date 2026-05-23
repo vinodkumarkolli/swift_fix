@@ -150,6 +150,7 @@ doc_events = {
 		"on_submit": "swift_fix.setup.popr_utils.on_po_submit"
 	},
 	"Purchase Receipt": {
+		"validate": "swift_fix.setup.popr_utils.validate_pr",
 		"on_submit": [
 			"swift_fix.setup.popr_utils.on_pr_submit",
 			"swift_fix.setup.popr_utils.create_purchase_receipt_serial_nos"

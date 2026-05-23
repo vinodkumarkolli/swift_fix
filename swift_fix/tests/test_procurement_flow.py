@@ -425,6 +425,12 @@ class Test09PR(ProcurementFlowBase):
 			"doctype": "Purchase Receipt",
 			"supplier": self.supplier,
 			"company": self.company,
+			"custom_qc_length": 10.0,
+			"custom_qc_height": 12.0,
+			"custom_qc_depth": 14.0,
+			"custom_qc_photo_1": "/files/qc1.png",
+			"custom_qc_photo_2": "/files/qc2.png",
+			"custom_qc_notes": "All items inspected and cleared.",
 			"items": [{
 				"item_code": self.item_code,
 				"qty": 1,
@@ -449,6 +455,167 @@ class Test09PR(ProcurementFlowBase):
 		# Verify serialization was done (serial number updated in items)
 		pr.reload()
 		self.assertTrue(bool(pr.items[0].serial_no))
+
+	def test_pr_validation_rules(self):
+		# 1. Test PR Item without PO throws ValidationError
+		pr_no_po = frappe.get_doc({
+			"doctype": "Purchase Receipt",
+			"supplier": self.supplier,
+			"company": self.company,
+			"custom_qc_length": 10.0,
+			"custom_qc_height": 12.0,
+			"custom_qc_depth": 14.0,
+			"custom_qc_photo_1": "/files/qc1.png",
+			"custom_qc_photo_2": "/files/qc2.png",
+			"custom_qc_notes": "Valid notes",
+			"items": [{
+				"item_code": self.item_code,
+				"qty": 1,
+				"rate": 150,
+				"uom": "Square Foot",
+				"conversion_factor": 1.0,
+				"warehouse": self.warehouse,
+				"asset_location": self.location
+				# purchase_order is intentionally omitted
+			}]
+		})
+		self.assertRaises(frappe.ValidationError, pr_no_po.insert)
+
+		# 2. Test missing QC dimensions throws ValidationError
+		pr_no_qc_dim = frappe.get_doc({
+			"doctype": "Purchase Receipt",
+			"supplier": self.supplier,
+			"company": self.company,
+			"custom_qc_photo_1": "/files/qc1.png",
+			"custom_qc_photo_2": "/files/qc2.png",
+			"custom_qc_notes": "Valid notes",
+			"items": [{
+				"item_code": self.item_code,
+				"qty": 1,
+				"rate": 150,
+				"uom": "Square Foot",
+				"conversion_factor": 1.0,
+				"purchase_order": "DummyPO",
+				"warehouse": self.warehouse,
+				"asset_location": self.location
+			}]
+		})
+		self.assertRaises(frappe.ValidationError, pr_no_qc_dim.insert)
+
+		# 3. Test missing QC photos throws ValidationError
+		pr_no_qc_photo = frappe.get_doc({
+			"doctype": "Purchase Receipt",
+			"supplier": self.supplier,
+			"company": self.company,
+			"custom_qc_length": 10.0,
+			"custom_qc_height": 12.0,
+			"custom_qc_depth": 14.0,
+			"custom_qc_notes": "Valid notes",
+			"items": [{
+				"item_code": self.item_code,
+				"qty": 1,
+				"rate": 150,
+				"uom": "Square Foot",
+				"conversion_factor": 1.0,
+				"purchase_order": "DummyPO",
+				"warehouse": self.warehouse,
+				"asset_location": self.location
+			}]
+		})
+		self.assertRaises(frappe.ValidationError, pr_no_qc_photo.insert)
+
+		# 4. Test missing QC notes throws ValidationError
+		pr_no_qc_notes = frappe.get_doc({
+			"doctype": "Purchase Receipt",
+			"supplier": self.supplier,
+			"company": self.company,
+			"custom_qc_length": 10.0,
+			"custom_qc_height": 12.0,
+			"custom_qc_depth": 14.0,
+			"custom_qc_photo_1": "/files/qc1.png",
+			"custom_qc_photo_2": "/files/qc2.png",
+			"items": [{
+				"item_code": self.item_code,
+				"qty": 1,
+				"rate": 150,
+				"uom": "Square Foot",
+				"conversion_factor": 1.0,
+				"purchase_order": "DummyPO",
+				"warehouse": self.warehouse,
+				"asset_location": self.location
+			}]
+		})
+		self.assertRaises(frappe.ValidationError, pr_no_qc_notes.insert)
+
+	def test_create_pr_helper(self):
+		from swift_fix.setup.popr_utils import create_pr
+
+		mr = frappe.get_doc({
+			"doctype": "Material Request",
+			"material_request_type": "Purchase",
+			"company": self.company,
+			"custom_location": self.location,
+			"custom_raised_by": self.raised_by,
+			"items": [{
+				"item_code": self.item_code,
+				"qty": 1,
+				"schedule_date": frappe.utils.add_days(frappe.utils.nowdate(), 5),
+				"warehouse": self.warehouse,
+				"uom": "Square Foot",
+				"conversion_factor": 1.0,
+				"custom_request_description": "Test description",
+				"expense_account": self.expense_account,
+				"cost_center": self.cost_center
+			}]
+		})
+		mr.insert().submit()
+		change_mr_status(mr.name, "Shortlisted")
+
+		po = frappe.get_doc({
+			"doctype": "Purchase Order",
+			"supplier": self.supplier,
+			"company": self.company,
+			"schedule_date": frappe.utils.add_days(frappe.utils.nowdate(), 5),
+			"items": [{
+				"item_code": self.item_code,
+				"qty": 1,
+				"rate": 150,
+				"uom": "Square Foot",
+				"conversion_factor": 1.0,
+				"material_request": mr.name,
+				"warehouse": self.warehouse
+			}]
+		})
+		po.insert().submit()
+
+		qc_details = {
+			"custom_qc_length": 8,
+			"custom_qc_height": 5,
+			"custom_qc_depth": 0.6,
+			"custom_qc_photo_1": "https://photos.app.goo.gl/UkR9rNajG3HYYECF8",
+			"custom_qc_photo_2": "https://photos.app.goo.gl/UkR9rNajG3HYYECF8",
+			"custom_qc_notes": "All items inspected and cleared.",
+		}
+
+		pr_name = create_pr(po_doc=po.name, qc=qc_details, warehouse=self.warehouse, company=self.company)
+		self.assertTrue(frappe.db.exists("Purchase Receipt", pr_name))
+
+		pr = frappe.get_doc("Purchase Receipt", pr_name)
+		self.assertEqual(pr.docstatus, 1)
+		self.assertEqual(pr.custom_qc_length, 8)
+		self.assertEqual(pr.custom_qc_height, 5)
+		self.assertEqual(pr.custom_qc_depth, 0.6)
+		self.assertEqual(pr.custom_qc_notes, "All items inspected and cleared.")
+
+		# Test passing qc_details as JSON string
+		po2 = frappe.copy_doc(po)
+		po2.name = None
+		po2.insert().submit()
+		
+		import json
+		qc_details_json = json.dumps(qc_details)
+		pr_name2 = create_pr(po_doc=po2.name, qc=qc_details_json, warehouse=self.warehouse, company=self.company)
+		self.assertTrue(frappe.db.exists("Purchase Receipt", pr_name2))
 
 
 class Test10AssetCapitalization(ProcurementFlowBase):
@@ -495,6 +662,12 @@ class Test10AssetCapitalization(ProcurementFlowBase):
 			"doctype": "Purchase Receipt",
 			"supplier": self.supplier,
 			"company": self.company,
+			"custom_qc_length": 10.0,
+			"custom_qc_height": 12.0,
+			"custom_qc_depth": 14.0,
+			"custom_qc_photo_1": "/files/qc1.png",
+			"custom_qc_photo_2": "/files/qc2.png",
+			"custom_qc_notes": "All items inspected and cleared.",
 			"items": [{
 				"item_code": self.item_code,
 				"qty": 1,
@@ -632,6 +805,12 @@ class Test11Asset(ProcurementFlowBase):
 			"doctype": "Purchase Receipt",
 			"supplier": self.supplier,
 			"company": self.company,
+			"custom_qc_length": 10.0,
+			"custom_qc_height": 12.0,
+			"custom_qc_depth": 14.0,
+			"custom_qc_photo_1": "/files/qc1.png",
+			"custom_qc_photo_2": "/files/qc2.png",
+			"custom_qc_notes": "All items inspected and cleared.",
 			"items": [{
 				"item_code": self.item_code,
 				"qty": 1,

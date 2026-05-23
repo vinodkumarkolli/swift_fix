@@ -3,6 +3,85 @@ import qrcode
 import io
 from swift_fix.setup.mr_utils import _change_mr_status
 
+def validate_pr(doc, method):
+	# Every Purchase Receipt Item must have a linked Purchase Order
+	for item in doc.get("items", []):
+		if not item.get("purchase_order"):
+			frappe.throw(
+				frappe._("Row #{0}: Purchase Order is mandatory for Purchase Receipt Item").format(item.idx)
+			)
+
+	# Quality Control validations on the parent Purchase Receipt
+	if not doc.get("custom_qc_length") or not doc.get("custom_qc_height") or not doc.get("custom_qc_depth"):
+		frappe.throw(frappe._("QC Dimensions are mandatory"))
+
+	if not doc.get("custom_qc_photo_1"):
+		frappe.throw(frappe._("QC Photos are mandatory"))
+
+	if not doc.get("custom_qc_notes") or not doc.get("custom_qc_notes").strip():
+		frappe.throw(frappe._("QC Notes are mandatory"))
+
+@frappe.whitelist()
+def create_pr(po_doc, warehouse=None, company=None, qc=None):
+	from erpnext.buying.doctype.purchase_order.purchase_order import make_purchase_receipt
+
+	po_name = po_doc
+	if not isinstance(po_doc, str):
+		po_name = po_doc.name
+
+	# Make Purchase Receipt from Purchase Order
+	pr = make_purchase_receipt(po_name)
+
+	# Set company if provided
+	if company:
+		pr.company = company
+
+	# Set warehouse on all items if provided, and map asset_location from linked Material Request
+	for item in pr.get("items", []):
+		if warehouse:
+			item.warehouse = warehouse
+
+		# Resolve asset_location from linked Material Request (if any)
+		mr_name = item.get("material_request")
+		if not mr_name and item.get("purchase_order_item"):
+			mr_name = frappe.db.get_value("Purchase Order Item", item.get("purchase_order_item"), "material_request")
+
+		mr_location = None
+		if mr_name:
+			mr_location = frappe.db.get_value("Material Request", mr_name, "custom_location")
+
+		if mr_location:
+			item.asset_location = mr_location
+		else:
+			# Fallback: use first available Location in the system
+			item.asset_location = frappe.db.get_value("Location", {}, "name")
+
+	# Load and set QC details
+	import json
+	if isinstance(qc, str):
+		try:
+			qc = json.loads(qc)
+		except Exception:
+			frappe.throw(frappe._("Invalid JSON format for qc"))
+
+	if isinstance(qc, dict):
+		for field in [
+			"custom_qc_length",
+			"custom_qc_height",
+			"custom_qc_depth",
+			"custom_qc_photo_1",
+			"custom_qc_photo_2",
+			"custom_qc_notes"
+		]:
+			if field in qc:
+				pr.set(field, qc[field])
+
+	# Save and submit the Purchase Receipt
+	pr.insert()
+	pr.submit()
+
+	return pr.name
+
 def on_po_submit(doc, method):
 	# Check if there are any Purchase Receipts generated for this PO
 	pr_exists = frappe.db.exists("Purchase Receipt Item", {
