@@ -64,5 +64,16 @@
   "name": "Asset Procurement HTML",
   "script": "frappe.ui.form.on('Asset', {\n    refresh(frm) {\n        if (!frm.is_new()) {\n            frappe.call({\n                method: 'swift_fix.setup.popr_utils.get_procurement_details',\n                args: { asset_name: frm.doc.name },\n                callback: function(r) {\n                    if (r.message) {\n                        frm.set_df_property('custom_procurement_html', 'options', r.message);\n                        frm.refresh_field('custom_procurement_html');\n                    }\n                }\n            });\n        }\n    }\n});",
   "view": "Form"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Client Script",
+  "dt": "Purchase Order",
+  "enabled": 1,
+  "modified": "2026-05-23 20:00:00",
+  "module": "Swift Fix",
+  "name": "Purchase Order MR Details",
+  "script": "frappe.ui.form.on('Purchase Order', {\n    refresh(frm) {\n        load_material_request_details(frm);\n    }\n});\n\nfunction load_material_request_details(frm) {\n    if (frm.is_new()) {\n        frm.set_df_property('custom_mr_html', 'options', '');\n        frm.refresh_field('custom_mr_html');\n        return;\n    }\n\n    frappe.call({\n        method: 'swift_fix.setup.rfq_update.get_linked_mr_html',\n        args: {\n            doctype: frm.doc.doctype,\n            docname: frm.doc.name\n        },\n        callback: function(r) {\n            if (r.message) {\n                frm.set_df_property('custom_mr_html', 'options', r.message);\n            } else {\n                frm.set_df_property('custom_mr_html', 'options', '');\n            }\n            frm.refresh_field('custom_mr_html');\n        }\n    });\n}",
+  "view": "Form"
  }
 ]

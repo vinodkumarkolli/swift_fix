@@ -380,6 +380,12 @@ class Test08PO(ProcurementFlowBase):
 		}, fields=["content"], order_by="creation desc")
 		self.assertTrue(any(f"Status updated to Under Process upon submission of Purchase Order {po.name}" in c.content for c in comments))
 
+		# Test get_linked_mr_html for Purchase Order
+		from swift_fix.setup.rfq_update import get_linked_mr_html
+		po_html = get_linked_mr_html("Purchase Order", po.name)
+		self.assertIn(mr.name, po_html)
+		self.assertIn(self.location, po_html)
+
 
 class Test09PR(ProcurementFlowBase):
 	def test_pr_submission_flow(self):
