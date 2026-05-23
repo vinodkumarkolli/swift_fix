@@ -279,12 +279,12 @@ def get_historic_flow_details(mr_name):
 		stock_items = frappe.get_all(
 			"Asset Capitalization Stock Item",
 			filters={"parent": mr_name},
-			fields=["item_code", "item_name", "qty", "warehouse"]
+			fields=["item_code", "item_name", "stock_qty", "warehouse"]
 		)
 		details["mr_items"] = [{
 			"item_code": d.item_code,
 			"item_name": d.item_name,
-			"custom_request_description": f"Quantity: {d.qty} | Source Warehouse: {d.warehouse}"
+			"custom_request_description": f"Quantity: {d.stock_qty} | Source Warehouse: {d.warehouse}"
 		} for d in stock_items]
 
 		ac = frappe.get_doc("Asset Capitalization", mr_name)

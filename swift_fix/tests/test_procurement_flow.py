@@ -1129,6 +1129,14 @@ class Test13StockLedAssetFlow(ProcurementFlowBase):
 		asset_doc.reload()
 		self.assertEqual(asset_doc.docstatus, 1)
 
+		# Verify historic details retrieval for stock-led flow
+		from swift_fix.setup.utils import get_historic_flow_details
+		flow_details = get_historic_flow_details(ac_valid.name)
+		self.assertEqual(flow_details["mr_name"], ac_valid.name)
+		self.assertTrue(flow_details["is_stock_led"])
+		self.assertEqual(len(flow_details["mr_items"]), 1)
+		self.assertEqual(flow_details["mr_items"][0]["item_code"], stock_item_code)
+
 		# Verify that cancelling the Asset Capitalization cancels the target asset
 		ac_valid.cancel()
 		asset_doc.reload()
