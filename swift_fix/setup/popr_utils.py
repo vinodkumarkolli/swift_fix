@@ -1,5 +1,5 @@
 import frappe
-import qrcode
+import pyqrcode
 import io
 from swift_fix.setup.mr_utils import _change_mr_status
 
@@ -235,10 +235,10 @@ def generate_asset_qr(doc, method=None):
 	qr_data = frappe.utils.get_url() + "/app/asset-maintenance-log/new-asset-maintenance-log?asset=" + doc.name
 
 	# Create QR image
-	img = qrcode.make(qr_data)
+	qr = pyqrcode.create(qr_data)
 
 	buffer = io.BytesIO()
-	img.save(buffer, format="PNG")
+	qr.png(buffer, scale=4)
 
 	# Create file attachment
 	file_doc = frappe.get_doc({
